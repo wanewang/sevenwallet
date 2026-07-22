@@ -20,32 +20,36 @@ struct WalletHomeView: View {
                 WalletTopBar(
                     theme: theme,
                     isThemeLight: viewModel.isThemeLight,
-                    onToggleTheme: {}
+                    onToggleTheme: viewModel.toggleTheme
                 )
 
                 ScrollView {
-                    VStack(spacing: 0) {
-                        WalletCardView(
-                            viewModel: viewModel.walletCard,
-                            theme: theme
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
-                        .padding(.bottom, 24)
-
-                        tokensHeader
-
-                        ForEach(
-                            Array(viewModel.tokens.enumerated()),
-                            id: \.element.id
-                        ) { index, token in
-                            TokenRowView(
-                                viewModel: token,
-                                theme: theme,
-                                isFirst: index == 0,
-                                isLast: index == viewModel.tokens.count - 1
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        Section {
+                            WalletCardView(
+                                viewModel: viewModel.walletCard,
+                                theme: theme
                             )
                             .padding(.horizontal, 16)
+                            .padding(.top, 16)
+                            .padding(.bottom, 24)
+                        }
+
+                        Section {
+                            ForEach(
+                                Array(viewModel.tokens.enumerated()),
+                                id: \.element.id
+                            ) { index, token in
+                                TokenRowView(
+                                    viewModel: token,
+                                    theme: theme,
+                                    isFirst: index == 0,
+                                    isLast: index == viewModel.tokens.count - 1
+                                )
+                                .padding(.horizontal, 16)
+                            }
+                        } header: {
+                            tokensHeader
                         }
                     }
                     .padding(.bottom, 16)

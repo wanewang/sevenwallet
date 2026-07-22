@@ -40,6 +40,46 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testThemeButtonTogglesDisplayedMode() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let themeButton = app.buttons["theme-toggle-button"]
+        XCTAssertTrue(themeButton.waitForExistence(timeout: 2))
+        XCTAssertEqual(themeButton.label, "Dark theme")
+
+        themeButton.tap()
+
+        XCTAssertEqual(themeButton.label, "Light theme")
+    }
+
+    @MainActor
+    func testTokensHeaderPinsBelowTopBar() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_LONG_TOKEN_LIST"]
+        app.launch()
+
+        let topBar = app.otherElements["wallet-top-bar"]
+        let tokensHeader = app.otherElements["tokens-header"]
+        XCTAssertTrue(topBar.waitForExistence(timeout: 2))
+        XCTAssertTrue(tokensHeader.waitForExistence(timeout: 2))
+
+        let initialHeaderY = tokensHeader.frame.minY
+        let topBarBottom = topBar.frame.maxY
+
+        for _ in 0..<4 where tokensHeader.frame.minY > topBarBottom + 3 {
+            app.swipeUp()
+        }
+
+        let pinnedHeaderY = tokensHeader.frame.minY
+        XCTAssertLessThan(pinnedHeaderY, initialHeaderY)
+        XCTAssertEqual(pinnedHeaderY, topBarBottom, accuracy: 3)
+
+        app.swipeUp()
+        XCTAssertEqual(tokensHeader.frame.minY, pinnedHeaderY, accuracy: 3)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
