@@ -33,16 +33,77 @@ struct WalletHomeViewModelTests {
 
         let load = Task { await home.loadTokens() }
         await repository.waitUntilGated()
-        for _ in 0..<100 {
-            guard !home.isLoadingTokens else { break }
-            await Task.yield()
-        }
+        await waitForLoading(home)
         #expect(home.isLoadingTokens)
 
         repository.releaseGate()
         await load.value
         #expect(!home.isLoadingTokens)
         #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+    }
+
+    @Test
+    func supersededEventsCannotOverwriteNewerRequestState() async {
+        let repository = ScriptedTokenRepository(scripts: [
+            .gated(
+                before: [.refreshing],
+                after: [.fresh([makeRepositoryToken(price: "1000")])],
+                error: .remoteFailure
+            ),
+            .gated(
+                before: [.refreshing],
+                after: [.fresh([makeRepositoryToken(price: "2000")])]
+            )
+        ])
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        let older = Task { await home.loadTokens() }
+        await repository.waitUntilGated(request: 0)
+        await waitForLoading(home)
+
+        let newer = Task { await home.retryTokens() }
+        await repository.waitUntilGated(request: 1)
+        await waitForLoading(home)
+
+        repository.releaseGate(request: 0)
+        await older.value
+
+        #expect(home.tokens.isEmpty)
+        #expect(home.tokenErrorMessage == nil)
+        #expect(home.isLoadingTokens)
+
+        repository.releaseGate(request: 1)
+        await newer.value
+
+        #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+        #expect(home.tokenErrorMessage == nil)
+        #expect(!home.isLoadingTokens)
+    }
+
+    @Test
+    func cancellationCleanupBelongsToActiveRequest() async {
+        let repository = ScriptedTokenRepository(scripts: [
+            .gated(before: [.refreshing], after: []),
+            .gated(before: [.refreshing], after: [])
+        ])
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        let older = Task { await home.loadTokens() }
+        await repository.waitUntilGated(request: 0)
+        await waitForLoading(home)
+
+        let newer = Task { await home.retryTokens() }
+        await repository.waitUntilGated(request: 1)
+        await waitForLoading(home)
+
+        older.cancel()
+        await older.value
+        #expect(home.isLoadingTokens)
+
+        newer.cancel()
+        await newer.value
+        #expect(!home.isLoadingTokens)
+        #expect(home.tokenErrorMessage == nil)
     }
 
     @Test
@@ -154,5 +215,12 @@ struct WalletHomeViewModelTests {
         #expect(!home.isThemeLight)
         home.toggleTheme()
         #expect(home.isThemeLight)
+    }
+
+    private func waitForLoading(_ home: WalletHomeViewModel) async {
+        for _ in 0..<100 {
+            guard !home.isLoadingTokens else { return }
+            await Task.yield()
+        }
     }
 }

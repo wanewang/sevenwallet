@@ -61,8 +61,8 @@ final class ScriptedTokenRepository: TokenRepositoryProtocol {
     }
 
     private var scripts: [Script]
-    private var gate: Gate?
-    private var gateWaiters: [CheckedContinuation<Void, Never>] = []
+    private var gates: [Int: Gate] = [:]
+    private var gateWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
     private(set) var requestedPolicies: [RefreshPolicy] = []
 
     init(events: [Event], error: RepositoryTestError? = nil) {
@@ -76,6 +76,7 @@ final class ScriptedTokenRepository: TokenRepositoryProtocol {
     func nativeTokens(
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<Event, Swift.Error> {
+        let requestIndex = requestedPolicies.count
         requestedPolicies.append(policy)
         let script = scripts.removeFirst()
         return AsyncThrowingStream<Event, Swift.Error> { continuation in
@@ -83,13 +84,12 @@ final class ScriptedTokenRepository: TokenRepositoryProtocol {
                 continuation.yield(event)
             }
             if script.isGated {
-                gate = Gate(
+                gates[requestIndex] = Gate(
                     continuation: continuation,
                     events: script.afterGate,
                     error: script.error
                 )
-                let waiters = gateWaiters
-                gateWaiters.removeAll()
+                let waiters = gateWaiters.removeValue(forKey: requestIndex) ?? []
                 waiters.forEach { $0.resume() }
             } else {
                 finish(continuation, error: script.error)
@@ -106,16 +106,15 @@ final class ScriptedTokenRepository: TokenRepositoryProtocol {
         }
     }
 
-    func waitUntilGated() async {
-        guard gate == nil else { return }
+    func waitUntilGated(request requestIndex: Int = 0) async {
+        guard gates[requestIndex] == nil else { return }
         await withCheckedContinuation { continuation in
-            gateWaiters.append(continuation)
+            gateWaiters[requestIndex, default: []].append(continuation)
         }
     }
 
-    func releaseGate() {
-        guard let gate else { return }
-        self.gate = nil
+    func releaseGate(request requestIndex: Int = 0) {
+        guard let gate = gates.removeValue(forKey: requestIndex) else { return }
         for event in gate.events {
             gate.continuation.yield(event)
         }

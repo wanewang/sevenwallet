@@ -14,6 +14,7 @@ final class WalletHomeViewModel {
     private let dateProvider: DateProvider
     private let walletIdentity: WalletIdentity?
     private var refreshCoordinator = PullRefreshCoordinator()
+    private var requestGeneration = 0
 
     init(
         isThemeLight: Bool = false,
@@ -128,9 +129,18 @@ final class WalletHomeViewModel {
     }
 
     private func consume(policy: RefreshPolicy) async {
+        requestGeneration += 1
+        let generation = requestGeneration
         tokenErrorMessage = nil
+        defer {
+            if generation == requestGeneration {
+                isLoadingTokens = false
+            }
+        }
+
         do {
             for try await event in tokenRepository.nativeTokens(policy: policy) {
+                guard generation == requestGeneration else { return }
                 switch event {
                 case .cached(let value), .fresh(let value):
                     updateTokens(value)
@@ -140,7 +150,7 @@ final class WalletHomeViewModel {
                 }
             }
         } catch {
-            isLoadingTokens = false
+            guard generation == requestGeneration, !Task.isCancelled else { return }
             tokenErrorMessage = error.localizedDescription
         }
     }
