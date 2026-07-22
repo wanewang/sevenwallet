@@ -27,11 +27,13 @@ struct TokenRowView: View {
                     .font(.headline)
                     .foregroundStyle(theme.fg1)
 
+                Text(viewModel.name)
+                    .font(.subheadline)
+                    .foregroundStyle(theme.fg2)
+
                 Text(viewModel.formattedDailyChange)
                     .font(.caption)
-                    .foregroundStyle(
-                        viewModel.isNonnegativeChange ? Theme.pos : Theme.neg
-                    )
+                    .foregroundStyle(viewModel.dailyChangeColor(theme: theme))
             }
 
             Spacer()

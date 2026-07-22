@@ -28,10 +28,12 @@ struct EmptyWalletCardView: View {
                     Text("Add your first wallet")
                         .font(.title2.bold())
                         .foregroundStyle(theme.fg1)
+                        .multilineTextAlignment(.center)
 
                     Text("Import an address to start tracking")
                         .font(.subheadline)
                         .foregroundStyle(theme.fg2)
+                        .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
             }

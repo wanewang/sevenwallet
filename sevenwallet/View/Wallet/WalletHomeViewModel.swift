@@ -156,7 +156,7 @@ final class WalletHomeViewModel {
     }
 
     private func updateTokens(_ value: [WalletToken]) {
-        let rows = value.map(TokenViewModel.init)
+        let rows = value.map { TokenViewModel(token: $0) }
         tokens = rows
         if let walletIdentity {
             walletCard = WalletCardViewModel(

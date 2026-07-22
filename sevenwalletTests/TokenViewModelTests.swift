@@ -73,4 +73,34 @@ struct TokenViewModelTests {
         #expect(token.formattedPrice == "-")
         #expect(token.holdingValue == 0)
     }
+
+    @Test
+    func dailyChangeColorUsesNeutralThenSignedColors() {
+        let neutral = makeToken(dailyChange: nil)
+        let positive = makeToken(dailyChange: 1)
+        let negative = makeToken(dailyChange: -1)
+
+        #expect(neutral.dailyChangeColor(theme: .dark) == Theme.dark.fg2)
+        #expect(positive.dailyChangeColor(theme: .dark) == Theme.pos)
+        #expect(negative.dailyChangeColor(theme: .dark) == Theme.neg)
+    }
+
+    private func makeToken(dailyChange: Decimal?) -> TokenViewModel {
+        TokenViewModel(
+            token: WalletToken(
+                tokenAddress: nil,
+                symbol: "ETH",
+                name: "Ether",
+                decimals: 18,
+                rawBalance: "0",
+                balance: 0,
+                isNative: true,
+                price: nil,
+                logoURL: nil,
+                coinKey: "ethereum",
+                priceUSD: nil
+            ),
+            dailyChange: dailyChange
+        )
+    }
 }

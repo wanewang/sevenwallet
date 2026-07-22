@@ -51,6 +51,7 @@ final class sevenwalletUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Import an address to start tracking"].exists)
         XCTAssertFalse(app.buttons["copy-wallet-address-button"].exists)
         XCTAssertTrue(app.staticTexts["ETH"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Ether"].exists)
         XCTAssertTrue(app.staticTexts["-"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["$1,926.42"].exists)
     }

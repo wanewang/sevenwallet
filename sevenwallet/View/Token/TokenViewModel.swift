@@ -10,15 +10,16 @@ final class TokenViewModel: Identifiable {
     let name: String
     let balance: Decimal
     let marketPrice: Decimal?
-    let dailyChange: Decimal? = nil
+    let dailyChange: Decimal?
     let logoURL: URL?
 
-    init(token: WalletToken) {
+    init(token: WalletToken, dailyChange: Decimal? = nil) {
         id = token.id
         symbol = token.symbol
         name = token.name
         balance = token.balance
         marketPrice = token.priceUSD ?? token.price?.value
+        self.dailyChange = dailyChange
         logoURL = token.logoURL
     }
 
@@ -46,7 +47,8 @@ final class TokenViewModel: Identifiable {
         Theme.accent
     }
 
-    var isNonnegativeChange: Bool {
-        dailyChange.map { $0 >= 0 } ?? true
+    func dailyChangeColor(theme: Theme) -> Color {
+        guard let dailyChange else { return theme.fg2 }
+        return dailyChange >= 0 ? Theme.pos : Theme.neg
     }
 }
