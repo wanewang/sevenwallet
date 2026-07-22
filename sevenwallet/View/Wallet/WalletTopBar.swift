@@ -9,16 +9,21 @@ struct WalletTopBar: View {
         HStack {
             Button(action: {}) {
                 HStack(spacing: 4) {
-                    Image(systemName: "rectangle.grid.1x2")
-                    Image(systemName: "chevron.down")
-                        .frame(width: 24, height: 24)
+                    Image(systemName: "menubar.rectangle")
+
+                    ZStack {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12, weight: .medium))
+                    }
                 }
                 .font(.system(size: 20, weight: .medium))
                 .frame(width: 72, height: 48)
-                .background(theme.glass)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(theme.chip)
+                .clipShape(
+                    RoundedRectangle(cornerRadius: Theme.chipCorner, style: .continuous)
+                )
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.chipCorner, style: .continuous)
                         .stroke(theme.edge, lineWidth: 1)
                 }
             }
@@ -32,10 +37,12 @@ struct WalletTopBar: View {
                 Image(systemName: isThemeLight ? "sun.max" : "moon")
                     .font(.system(size: 20, weight: .medium))
                     .frame(width: 48, height: 48)
-                    .background(theme.glass)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(theme.chip)
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: Theme.chipCorner, style: .continuous)
+                    )
                     .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: Theme.chipCorner, style: .continuous)
                             .stroke(theme.edge, lineWidth: 1)
                     }
             }

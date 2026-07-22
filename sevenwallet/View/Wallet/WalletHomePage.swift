@@ -77,8 +77,12 @@ struct WalletHomeView: View {
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 12)
                     .frame(height: 40)
+                    .background(theme.chip)
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: Theme.chipCorner, style: .continuous)
+                    )
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: Theme.chipCorner, style: .continuous)
                             .stroke(theme.edge, lineWidth: 1)
                     }
             }

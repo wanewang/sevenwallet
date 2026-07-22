@@ -14,23 +14,25 @@ struct WalletCardView: View {
 
                 Spacer(minLength: 8)
 
-                HStack(spacing: 6) {
-                    Text(viewModel.shortenedAddress)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(theme.fg2)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                Button {
+                    UIPasteboard.general.string = viewModel.address
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(viewModel.shortenedAddress)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(theme.fg2)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
 
-                    Button {
-                        UIPasteboard.general.string = viewModel.address
-                    } label: {
                         Image(systemName: "doc.on.doc")
-                            .frame(width: 28, height: 28)
+                            .font(.system(size: 16, weight: .medium))
+                            .frame(width: 20, height: 20)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Copy wallet address")
-                    .accessibilityIdentifier("copy-wallet-address-button")
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Copy wallet address")
+                .accessibilityIdentifier("copy-wallet-address-button")
             }
 
             VStack(alignment: .leading, spacing: 6) {
