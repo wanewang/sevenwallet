@@ -9,11 +9,14 @@ enum Fmt {
     static func usd(_ n: Double) -> String {
         let formatter = NumberFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.decimalSeparator = "."
         formatter.maximumFractionDigits = 2
         formatter.minimumFractionDigits = 2
-        return formatter.string(from: n as NSNumber) ?? "$0.00"
+        let value = formatter.string(from: abs(n) as NSNumber) ?? "0.00"
+        return (n < 0 ? "-$" : "$") + value
     }
     static func amount(_ n: Double) -> String {
         let formatter = NumberFormatter()
