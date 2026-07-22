@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import sevenwallet
 
@@ -22,5 +23,12 @@ struct FormattingTests {
     @Test
     func usdFormattingIsDeterministic() {
         #expect(Fmt.usd(12_480.21) == "$12,480.21")
+    }
+
+    @Test
+    func decimalFormattingIsExact() {
+        #expect(Fmt.usd(Decimal(string: "1926.42")!) == "$1,926.42")
+        #expect(Fmt.amount(Decimal(string: "0.0934")!) == "0.0934")
+        #expect(Fmt.pct(nil as Decimal?) == "-")
     }
 }
