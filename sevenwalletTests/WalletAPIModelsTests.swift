@@ -12,4 +12,12 @@ struct WalletAPIModelsTests {
     func invalidAddressFails(_ raw: String) {
         #expect(throws: EVMAddress.Error.invalid(raw)) { try EVMAddress(raw) }
     }
+
+    @Test func malformedAddressDecodingFails() {
+        let data = Data(#""0x1234""#.utf8)
+
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(EVMAddress.self, from: data)
+        }
+    }
 }

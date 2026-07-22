@@ -20,4 +20,14 @@ struct EVMAddress: RawRepresentable, Codable, Hashable, Sendable {
         precondition((try? EVMAddress(rawValue)) != nil)
         self.rawValue = rawValue.lowercased()
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        do {
+            self = try EVMAddress(rawValue)
+        } catch {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid EVM address")
+        }
+    }
 }
