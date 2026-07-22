@@ -89,7 +89,7 @@ struct FormattingTests {
 Run:
 
 ~~~bash
-xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests/FormattingTests test
+xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests/FormattingTests -parallel-testing-enabled NO test
 ~~~
 
 Expected: TEST FAILED; the first test reports 0x1234…CDEF instead of 0x1234…ABCDEF.
@@ -209,7 +209,7 @@ struct TokenViewModelTests {
 Run:
 
 ~~~bash
-xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests/TokenViewModelTests test
+xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests/TokenViewModelTests -parallel-testing-enabled NO test
 ~~~
 
 Expected: TEST FAILED during compilation because TokenViewModel is not defined.
@@ -367,7 +367,7 @@ struct WalletCardViewModelTests {
 Run:
 
 ~~~bash
-xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests/WalletCardViewModelTests test
+xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests/WalletCardViewModelTests -parallel-testing-enabled NO test
 ~~~
 
 Expected: TEST FAILED during compilation because WalletCardViewModel is not defined.
@@ -474,7 +474,7 @@ struct WalletHomeViewModelTests {
 Run:
 
 ~~~bash
-xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests/WalletHomeViewModelTests test
+xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests/WalletHomeViewModelTests -parallel-testing-enabled NO test
 ~~~
 
 Expected: TEST FAILED during compilation because WalletHomeViewModel is not defined.
@@ -569,7 +569,7 @@ Expected: TEST SUCCEEDED; all three home-model tests pass.
 Run:
 
 ~~~bash
-xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests test
+xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletTests -parallel-testing-enabled NO test
 ~~~
 
 Expected: TEST SUCCEEDED with the formatting, token, wallet-card, and home-model suites all passing.
@@ -625,7 +625,7 @@ func testWalletHomeContent() throws {
 Run:
 
 ~~~bash
-xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletUITests/sevenwalletUITests/testWalletHomeContent test
+xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletUITests/sevenwalletUITests/testWalletHomeContent -parallel-testing-enabled NO test
 ~~~
 
 Expected: TEST FAILED because wallet-selector-button does not exist.
@@ -1002,7 +1002,7 @@ func testTokensHeaderPinsBelowTopBar() throws {
 Run:
 
 ~~~bash
-xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletUITests/sevenwalletUITests/testThemeButtonTogglesDisplayedMode -only-testing:sevenwalletUITests/sevenwalletUITests/testTokensHeaderPinsBelowTopBar test
+xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletUITests/sevenwalletUITests/testThemeButtonTogglesDisplayedMode -only-testing:sevenwalletUITests/sevenwalletUITests/testTokensHeaderPinsBelowTopBar -parallel-testing-enabled NO test
 ~~~
 
 Expected: TEST FAILED. The theme label remains Dark theme, and the non-pinned header does not settle at the top-bar boundary.
@@ -1085,7 +1085,7 @@ Do not place a LazyVStack inside the Tokens section. Its ForEach rows must remai
 Run:
 
 ~~~bash
-xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletUITests/sevenwalletUITests test
+xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -only-testing:sevenwalletUITests/sevenwalletUITests -parallel-testing-enabled NO test
 ~~~
 
 Expected: TEST SUCCEEDED. Content is present, the theme label toggles, and the Tokens header pins beneath the 64-point top bar.
@@ -1120,7 +1120,7 @@ git commit --only sevenwallet/View/Wallet/WalletHomePage.swift sevenwallet/seven
 Run:
 
 ~~~bash
-xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home test
+xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -derivedDataPath /tmp/sevenwallet-wallet-home -parallel-testing-enabled NO test
 ~~~
 
 Expected: TEST SUCCEEDED with the four unit suites and all WalletHome UI tests passing.
