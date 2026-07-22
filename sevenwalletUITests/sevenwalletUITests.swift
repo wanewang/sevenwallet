@@ -23,12 +23,20 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testWalletHomeContent() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        XCTAssertTrue(app.buttons["wallet-selector-button"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["theme-toggle-button"].exists)
+        XCTAssertTrue(app.staticTexts["Main Wallet"].exists)
+        XCTAssertTrue(app.staticTexts["TOTAL VALUE"].exists)
+        XCTAssertTrue(app.buttons["copy-wallet-address-button"].exists)
+        XCTAssertTrue(app.buttons["manage-tokens-button"].exists)
+
+        for symbol in ["ETH", "BTC", "SOL", "USDC"] {
+            XCTAssertTrue(app.staticTexts[symbol].firstMatch.exists)
+        }
     }
 
     @MainActor
