@@ -5,6 +5,147 @@ enum RepositoryTestError: Swift.Error, Equatable, Sendable {
     case remoteFailure
 }
 
+extension RepositoryTestError: LocalizedError {
+    var errorDescription: String? {
+        "Unable to load tokens."
+    }
+}
+
+@MainActor
+final class ScriptedTokenRepository: TokenRepositoryProtocol {
+    typealias Event = RepositoryLoadEvent<[WalletToken]>
+
+    struct Script: Sendable {
+        let beforeGate: [Event]
+        let afterGate: [Event]
+        let error: RepositoryTestError?
+        let isGated: Bool
+
+        init(events: [Event], error: RepositoryTestError? = nil) {
+            beforeGate = events
+            afterGate = []
+            self.error = error
+            isGated = false
+        }
+
+        static func gated(
+            before: [Event],
+            after: [Event],
+            error: RepositoryTestError? = nil
+        ) -> Script {
+            Script(
+                beforeGate: before,
+                afterGate: after,
+                error: error,
+                isGated: true
+            )
+        }
+
+        private init(
+            beforeGate: [Event],
+            afterGate: [Event],
+            error: RepositoryTestError?,
+            isGated: Bool
+        ) {
+            self.beforeGate = beforeGate
+            self.afterGate = afterGate
+            self.error = error
+            self.isGated = isGated
+        }
+    }
+
+    private struct Gate {
+        let continuation: AsyncThrowingStream<Event, Swift.Error>.Continuation
+        let events: [Event]
+        let error: RepositoryTestError?
+    }
+
+    private var scripts: [Script]
+    private var gate: Gate?
+    private var gateWaiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var requestedPolicies: [RefreshPolicy] = []
+
+    init(events: [Event], error: RepositoryTestError? = nil) {
+        scripts = [Script(events: events, error: error)]
+    }
+
+    init(scripts: [Script]) {
+        self.scripts = scripts
+    }
+
+    func nativeTokens(
+        policy: RefreshPolicy
+    ) -> AsyncThrowingStream<Event, Swift.Error> {
+        requestedPolicies.append(policy)
+        let script = scripts.removeFirst()
+        return AsyncThrowingStream<Event, Swift.Error> { continuation in
+            for event in script.beforeGate {
+                continuation.yield(event)
+            }
+            if script.isGated {
+                gate = Gate(
+                    continuation: continuation,
+                    events: script.afterGate,
+                    error: script.error
+                )
+                let waiters = gateWaiters
+                gateWaiters.removeAll()
+                waiters.forEach { $0.resume() }
+            } else {
+                finish(continuation, error: script.error)
+            }
+        }
+    }
+
+    func portfolio(
+        address: EVMAddress,
+        policy: RefreshPolicy
+    ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error> {
+        AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error> {
+            $0.finish()
+        }
+    }
+
+    func waitUntilGated() async {
+        guard gate == nil else { return }
+        await withCheckedContinuation { continuation in
+            gateWaiters.append(continuation)
+        }
+    }
+
+    func releaseGate() {
+        guard let gate else { return }
+        self.gate = nil
+        for event in gate.events {
+            gate.continuation.yield(event)
+        }
+        finish(gate.continuation, error: gate.error)
+    }
+
+    private func finish(
+        _ continuation: AsyncThrowingStream<Event, Swift.Error>.Continuation,
+        error: RepositoryTestError?
+    ) {
+        if let error {
+            continuation.finish(throwing: error)
+        } else {
+            continuation.finish()
+        }
+    }
+}
+
+final class ScriptedDateProvider: @unchecked Sendable {
+    private var dates: [Date]
+
+    init(_ dates: [Date]) {
+        self.dates = dates
+    }
+
+    var provider: DateProvider {
+        DateProvider { [self] in dates.removeFirst() }
+    }
+}
+
 struct TransactionRequest: Hashable, Sendable {
     let address: EVMAddress
     let limit: Int

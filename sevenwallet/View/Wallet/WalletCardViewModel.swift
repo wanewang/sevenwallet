@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 @MainActor
@@ -17,8 +18,8 @@ final class WalletCardViewModel {
         Fmt.short(address)
     }
 
-    var totalValue: Double {
-        tokens.reduce(0) { $0 + $1.totalValue }
+    var totalValue: Decimal {
+        tokens.reduce(0) { $0 + $1.holdingValue }
     }
 
     var formattedTotalValue: String {

@@ -1,74 +1,184 @@
+import Foundation
 import Observation
-import SwiftUI
 
 @MainActor
 @Observable
 final class WalletHomeViewModel {
     var isThemeLight: Bool
-    let tokens: [TokenViewModel]
-    let walletCard: WalletCardViewModel
+    private(set) var tokens: [TokenViewModel]
+    private(set) var isLoadingTokens = false
+    private(set) var tokenErrorMessage: String?
+    private(set) var walletCard: WalletCardViewModel?
+
+    private let tokenRepository: any TokenRepositoryProtocol
+    private let dateProvider: DateProvider
+    private let walletIdentity: WalletIdentity?
+    private var refreshCoordinator = PullRefreshCoordinator()
 
     init(
         isThemeLight: Bool = false,
-        walletName: String,
-        walletAddress: String,
-        tokens: [TokenViewModel]
+        tokenRepository: any TokenRepositoryProtocol,
+        dateProvider: DateProvider = .system,
+        walletName: String? = nil,
+        walletAddress: String? = nil
     ) {
         self.isThemeLight = isThemeLight
-        self.tokens = tokens
-        walletCard = WalletCardViewModel(
-            name: walletName,
-            address: walletAddress,
-            tokens: tokens
-        )
+        self.tokenRepository = tokenRepository
+        self.dateProvider = dateProvider
+        tokens = []
+
+        if let walletName, let walletAddress {
+            let identity = WalletIdentity(name: walletName, address: walletAddress)
+            walletIdentity = identity
+            walletCard = WalletCardViewModel(
+                name: identity.name,
+                address: identity.address,
+                tokens: []
+            )
+        } else {
+            walletIdentity = nil
+            walletCard = nil
+        }
     }
 
     func toggleTheme() {
         isThemeLight.toggle()
     }
 
+    func loadTokens() async {
+        await consume(policy: .ifExpired)
+    }
+
+    func refreshTokens() async {
+        await consume(policy: refreshCoordinator.recordPull(at: dateProvider.now()))
+    }
+
+    func retryTokens() async {
+        await consume(policy: .ifExpired)
+    }
+
     static func sample(tokenSetCopies: Int = 1) -> WalletHomeViewModel {
-        let tokens = (0..<tokenSetCopies).flatMap { _ in
+        let values = (0..<tokenSetCopies).flatMap { copy in
             [
-                TokenViewModel(
+                sampleToken(
                     symbol: "ETH",
-                    balance: 4.25,
-                    currentPrice: 2_936.52,
-                    dailyChange: 2.48,
-                    iconText: "Ξ",
-                    iconColor: Theme.accent
+                    name: "Ether",
+                    balance: "4.25",
+                    price: "2936.52",
+                    coinKey: "ethereum",
+                    copy: copy
                 ),
-                TokenViewModel(
+                sampleToken(
                     symbol: "BTC",
-                    balance: 0.0934,
-                    currentPrice: 104_022.48,
-                    dailyChange: 1.12,
-                    iconText: "₿",
-                    iconColor: Theme.warn
+                    name: "Bitcoin",
+                    balance: "0.0934",
+                    price: "104022.48",
+                    coinKey: "bitcoin",
+                    copy: copy
                 ),
-                TokenViewModel(
+                sampleToken(
                     symbol: "SOL",
-                    balance: 18.42,
-                    currentPrice: 142.54,
-                    dailyChange: 4.06,
-                    iconText: "S",
-                    iconColor: Theme.accentHi
+                    name: "Solana",
+                    balance: "18.42",
+                    price: "142.54",
+                    coinKey: "solana",
+                    copy: copy
                 ),
-                TokenViewModel(
+                sampleToken(
                     symbol: "USDC",
-                    balance: 1_500,
-                    currentPrice: 1,
-                    dailyChange: -0.03,
-                    iconText: "$",
-                    iconColor: Theme.pos
+                    name: "USD Coin",
+                    balance: "1500",
+                    price: "1",
+                    coinKey: "usd-coin",
+                    copy: copy
                 )
             ]
         }
 
-        return WalletHomeViewModel(
+        let home = WalletHomeViewModel(
+            tokenRepository: StaticTokenRepository(tokens: values),
             walletName: "Main Wallet",
-            walletAddress: "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92",
-            tokens: tokens
+            walletAddress: "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
         )
+        home.updateTokens(values)
+        return home
+    }
+
+    private static func sampleToken(
+        symbol: String,
+        name: String,
+        balance: String,
+        price: String,
+        coinKey: String,
+        copy: Int
+    ) -> WalletToken {
+        WalletToken(
+            tokenAddress: nil,
+            symbol: symbol,
+            name: name,
+            decimals: 18,
+            rawBalance: "0",
+            balance: Decimal(string: balance)!,
+            isNative: true,
+            price: nil,
+            logoURL: nil,
+            coinKey: "\(coinKey)-\(copy)",
+            priceUSD: Decimal(string: price)
+        )
+    }
+
+    private func consume(policy: RefreshPolicy) async {
+        tokenErrorMessage = nil
+        do {
+            for try await event in tokenRepository.nativeTokens(policy: policy) {
+                switch event {
+                case .cached(let value), .fresh(let value):
+                    updateTokens(value)
+                    isLoadingTokens = false
+                case .refreshing:
+                    isLoadingTokens = true
+                }
+            }
+        } catch {
+            isLoadingTokens = false
+            tokenErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func updateTokens(_ value: [WalletToken]) {
+        let rows = value.map(TokenViewModel.init)
+        tokens = rows
+        if let walletIdentity {
+            walletCard = WalletCardViewModel(
+                name: walletIdentity.name,
+                address: walletIdentity.address,
+                tokens: rows
+            )
+        }
+    }
+}
+
+private struct WalletIdentity {
+    let name: String
+    let address: String
+}
+
+private struct StaticTokenRepository: TokenRepositoryProtocol {
+    let tokens: [WalletToken]
+
+    func nativeTokens(
+        policy: RefreshPolicy
+    ) -> AsyncThrowingStream<RepositoryLoadEvent<[WalletToken]>, Swift.Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(.cached(tokens))
+            continuation.finish()
+        }
+    }
+
+    func portfolio(
+        address: EVMAddress,
+        policy: RefreshPolicy
+    ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error> {
+        AsyncThrowingStream { $0.finish() }
     }
 }

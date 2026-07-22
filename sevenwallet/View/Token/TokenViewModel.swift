@@ -5,38 +5,25 @@ import SwiftUI
 @MainActor
 @Observable
 final class TokenViewModel: Identifiable {
-    let id: UUID
+    let id: String
     let symbol: String
-    var balance: Double
-    var currentPrice: Double
-    var dailyChange: Double
-    let iconText: String
-    let iconColor: Color
+    let name: String
+    let balance: Decimal
+    let marketPrice: Decimal?
+    let dailyChange: Decimal? = nil
+    let logoURL: URL?
 
-    init(
-        id: UUID = UUID(),
-        symbol: String,
-        balance: Double,
-        currentPrice: Double,
-        dailyChange: Double,
-        iconText: String,
-        iconColor: Color
-    ) {
-        self.id = id
-        self.symbol = symbol
-        self.balance = balance
-        self.currentPrice = currentPrice
-        self.dailyChange = dailyChange
-        self.iconText = iconText
-        self.iconColor = iconColor
+    init(token: WalletToken) {
+        id = token.id
+        symbol = token.symbol
+        name = token.name
+        balance = token.balance
+        marketPrice = token.priceUSD ?? token.price?.value
+        logoURL = token.logoURL
     }
 
-    var totalValue: Double {
-        balance * currentPrice
-    }
-
-    var formattedValue: String {
-        Fmt.usd(totalValue)
+    var formattedPrice: String {
+        marketPrice.map(Fmt.usd) ?? "-"
     }
 
     var formattedBalance: String {
@@ -47,7 +34,24 @@ final class TokenViewModel: Identifiable {
         Fmt.pct(dailyChange)
     }
 
+    var iconText: String {
+        String(symbol.prefix(1))
+    }
+
+    var holdingValue: Decimal {
+        balance * (marketPrice ?? 0)
+    }
+
+    // Kept until the token-row rendering switches to the native-token fields.
+    var iconColor: Color {
+        Theme.accent
+    }
+
+    var formattedValue: String {
+        Fmt.usd(holdingValue)
+    }
+
     var isNonnegativeChange: Bool {
-        dailyChange >= 0
+        dailyChange.map { $0 >= 0 } ?? true
     }
 }

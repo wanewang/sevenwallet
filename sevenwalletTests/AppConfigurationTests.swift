@@ -31,4 +31,9 @@ struct AppConfigurationTests {
             try AppConfiguration(environment: [:], infoDictionary: [:])
         }
     }
+
+    @Test func errorsHaveConciseDescriptions() {
+        #expect(AppConfiguration.Error.missingBaseURL.localizedDescription == "BASE_URL is not configured.")
+        #expect(AppConfiguration.Error.invalidBaseURL("secret").localizedDescription == "BASE_URL is invalid.")
+    }
 }

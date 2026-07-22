@@ -1,8 +1,12 @@
 import Foundation
 
 struct EVMAddress: RawRepresentable, Codable, Hashable, Sendable {
-    enum Error: Swift.Error, Equatable {
+    enum Error: Swift.Error, Equatable, LocalizedError {
         case invalid(String)
+
+        nonisolated var errorDescription: String? {
+            "Wallet address is invalid."
+        }
     }
 
     let rawValue: String

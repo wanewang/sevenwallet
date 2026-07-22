@@ -125,6 +125,13 @@ struct TransactionRepositoryTests {
         #expect(await remote.callCount == 0)
     }
 
+    @Test func invalidLimitHasConciseDescription() {
+        #expect(
+            RepositoryError.invalidTransactionLimit(101).localizedDescription
+                == "Transaction limit must be between 1 and 100."
+        )
+    }
+
     private func fixedDate(_ date: Date) -> DateProvider {
         DateProvider(now: { date })
     }

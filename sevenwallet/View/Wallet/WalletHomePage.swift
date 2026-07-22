@@ -26,13 +26,15 @@ struct WalletHomeView: View {
                 ScrollView {
                     LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                         Section {
-                            WalletCardView(
-                                viewModel: viewModel.walletCard,
-                                theme: theme
-                            )
-                            .padding(.horizontal, 16)
-                            .padding(.top, 16)
-                            .padding(.bottom, 24)
+                            if let walletCard = viewModel.walletCard {
+                                WalletCardView(
+                                    viewModel: walletCard,
+                                    theme: theme
+                                )
+                                .padding(.horizontal, 16)
+                                .padding(.top, 16)
+                                .padding(.bottom, 24)
+                            }
                         }
 
                         Section {

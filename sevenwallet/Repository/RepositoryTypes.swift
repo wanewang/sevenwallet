@@ -45,6 +45,10 @@ struct TransactionRequestKey: Hashable, Sendable {
     let pageKey: String?
 }
 
-enum RepositoryError: Swift.Error, Equatable {
+enum RepositoryError: Swift.Error, Equatable, LocalizedError {
     case invalidTransactionLimit(Int)
+
+    nonisolated var errorDescription: String? {
+        "Transaction limit must be between 1 and 100."
+    }
 }

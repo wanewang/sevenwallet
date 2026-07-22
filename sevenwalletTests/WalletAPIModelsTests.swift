@@ -20,4 +20,8 @@ struct WalletAPIModelsTests {
             try JSONDecoder().decode(EVMAddress.self, from: data)
         }
     }
+
+    @Test func invalidAddressHasConciseDescription() {
+        #expect(EVMAddress.Error.invalid("private address").localizedDescription == "Wallet address is invalid.")
+    }
 }

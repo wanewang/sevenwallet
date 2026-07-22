@@ -1,9 +1,18 @@
 import Foundation
 
 struct AppConfiguration: Sendable {
-    enum Error: Swift.Error, Equatable {
+    enum Error: Swift.Error, Equatable, LocalizedError {
         case missingBaseURL
         case invalidBaseURL(String)
+
+        nonisolated var errorDescription: String? {
+            switch self {
+            case .missingBaseURL:
+                "BASE_URL is not configured."
+            case .invalidBaseURL:
+                "BASE_URL is invalid."
+            }
+        }
     }
 
     let baseURL: URL

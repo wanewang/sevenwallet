@@ -1,11 +1,26 @@
 import Foundation
 
-enum APIError: Swift.Error, Equatable {
+enum APIError: Swift.Error, Equatable, LocalizedError {
     case invalidRequest
     case transport(String)
     case nonHTTPResponse
     case http(status: Int, message: String?)
     case invalidData
+
+    nonisolated var errorDescription: String? {
+        switch self {
+        case .invalidRequest:
+            "Unable to create request."
+        case .transport:
+            "Unable to reach the server."
+        case .nonHTTPResponse:
+            "The server returned an invalid response."
+        case .http(let status, let message):
+            message ?? "Request failed (HTTP \(status))."
+        case .invalidData:
+            "Unable to read the server response."
+        }
+    }
 }
 
 protocol APIClientProtocol: Sendable {

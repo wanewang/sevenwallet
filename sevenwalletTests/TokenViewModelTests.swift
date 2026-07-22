@@ -1,44 +1,76 @@
-import SwiftUI
+import Foundation
 import Testing
 @testable import sevenwallet
 
 @MainActor
 struct TokenViewModelTests {
     @Test
-    func calculatesAndFormatsTokenValues() {
-        let token = TokenViewModel(
+    func mapsNativeTokenAndFormatsExactDecimalValues() {
+        let token = TokenViewModel(token: WalletToken(
+            tokenAddress: nil,
             symbol: "ETH",
-            balance: 4.25,
-            currentPrice: 2_936.52,
-            dailyChange: 2.48,
-            iconText: "Ξ",
-            iconColor: .blue
-        )
+            name: "Ether",
+            decimals: 18,
+            rawBalance: "4250000000000000000",
+            balance: Decimal(string: "4.25")!,
+            isNative: true,
+            price: TokenPrice(currency: "USD", value: 2_900, lastUpdatedAt: nil),
+            logoURL: URL(string: "https://example.com/eth.png"),
+            coinKey: "ethereum",
+            priceUSD: Decimal(string: "2936.52")
+        ))
 
-        #expect(abs(token.totalValue - 12_480.21) < 0.0001)
-        #expect(token.formattedValue == "$12,480.21")
+        #expect(token.id == "ethereum:native")
+        #expect(token.name == "Ether")
+        #expect(token.balance == Decimal(string: "4.25"))
+        #expect(token.marketPrice == Decimal(string: "2936.52"))
+        #expect(token.logoURL == URL(string: "https://example.com/eth.png"))
+        #expect(token.formattedPrice == "$2,936.52")
         #expect(token.formattedBalance == "4.25 ETH")
-        #expect(token.formattedDailyChange == "+2.48%")
-        #expect(token.isNonnegativeChange)
+        #expect(token.formattedDailyChange == "-")
+        #expect(token.iconText == "E")
+        #expect(token.holdingValue == Decimal(string: "12480.21"))
     }
 
     @Test
-    func derivedValuesFollowMutation() {
-        let token = TokenViewModel(
+    func fallsBackToNestedPrice() {
+        let token = TokenViewModel(token: WalletToken(
+            tokenAddress: "0xabc",
             symbol: "USDC",
+            name: "USD Coin",
+            decimals: 6,
+            rawBalance: "10000000",
             balance: 10,
-            currentPrice: 1,
-            dailyChange: -0.03,
-            iconText: "$",
-            iconColor: .green
-        )
+            isNative: false,
+            price: TokenPrice(currency: "USD", value: Decimal(string: "1.01"), lastUpdatedAt: nil),
+            logoURL: nil,
+            coinKey: "usd-coin",
+            priceUSD: nil
+        ))
 
-        token.balance = 20
-        token.currentPrice = 1.01
+        #expect(token.marketPrice == Decimal(string: "1.01"))
+        #expect(token.formattedPrice == "$1.01")
+        #expect(token.holdingValue == Decimal(string: "10.1"))
+    }
 
-        #expect(abs(token.totalValue - 20.2) < 0.0001)
-        #expect(token.formattedValue == "$20.20")
-        #expect(token.formattedDailyChange == "-0.03%")
-        #expect(!token.isNonnegativeChange)
+    @Test
+    func missingPriceUsesPlaceholderAndZeroHoldingValue() {
+        let token = TokenViewModel(token: WalletToken(
+            tokenAddress: nil,
+            symbol: "NEW",
+            name: "New Token",
+            decimals: 18,
+            rawBalance: "2",
+            balance: 2,
+            isNative: true,
+            price: nil,
+            logoURL: nil,
+            coinKey: "new",
+            priceUSD: nil
+        ))
+
+        #expect(token.marketPrice == nil)
+        #expect(token.formattedPrice == "-")
+        #expect(token.holdingValue == 0)
     }
 }

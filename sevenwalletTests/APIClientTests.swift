@@ -191,6 +191,15 @@ struct APIClientTests {
             try await TokenRemoteDataSource(client: client).fetchNativeTokens()
         }
     }
+
+    @Test func errorsHaveConciseDescriptions() {
+        #expect(APIError.invalidRequest.localizedDescription == "Unable to create request.")
+        #expect(APIError.transport("private detail").localizedDescription == "Unable to reach the server.")
+        #expect(APIError.nonHTTPResponse.localizedDescription == "The server returned an invalid response.")
+        #expect(APIError.http(status: 503, message: "upstream unavailable").localizedDescription == "upstream unavailable")
+        #expect(APIError.http(status: 500, message: nil).localizedDescription == "Request failed (HTTP 500).")
+        #expect(APIError.invalidData.localizedDescription == "Unable to read the server response.")
+    }
 }
 
 private actor RequestRecorder {
