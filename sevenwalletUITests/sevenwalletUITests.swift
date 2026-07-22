@@ -23,12 +23,70 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testWalletHomeContent() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        XCTAssertTrue(app.buttons["wallet-selector-button"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["theme-toggle-button"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Main Wallet"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["TOTAL VALUE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["copy-wallet-address-button"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["manage-tokens-button"].waitForExistence(timeout: 2))
+
+        for symbol in ["ETH", "BTC", "SOL", "USDC"] {
+            XCTAssertTrue(app.staticTexts[symbol].firstMatch.waitForExistence(timeout: 2))
+        }
+    }
+
+    @MainActor
+    func testThemeButtonTogglesDisplayedMode() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let themeButton = app.buttons["theme-toggle-button"]
+        XCTAssertTrue(themeButton.waitForExistence(timeout: 2))
+        XCTAssertEqual(themeButton.label, "Switch to light theme")
+
+        themeButton.tap()
+
+        let switchedToDark = expectation(
+            for: NSPredicate(format: "label == %@", "Switch to dark theme"),
+            evaluatedWith: themeButton
+        )
+        wait(for: [switchedToDark], timeout: 2)
+    }
+
+    @MainActor
+    func testTokensHeaderPinsBelowTopBar() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_LONG_TOKEN_LIST"]
+        app.launch()
+
+        let topBar = app.otherElements["wallet-top-bar"]
+        let scrollView = app.scrollViews.firstMatch
+        // The pinned section header is exposed as a StaticText (header trait),
+        // not an Other, so match it by identifier regardless of element type.
+        let tokensHeader = app.descendants(matching: .any)
+            .matching(identifier: "tokens-header").firstMatch
+        XCTAssertTrue(topBar.waitForExistence(timeout: 2))
+        XCTAssertTrue(tokensHeader.waitForExistence(timeout: 2))
+
+        let initialHeaderY = tokensHeader.frame.minY
+        // The header pins to the top of the scroll viewport, which sits directly
+        // below the top bar (VStack with no spacing).
+        let scrollTop = scrollView.frame.minY
+
+        for _ in 0..<4 where tokensHeader.frame.minY > scrollTop + 3 {
+            app.swipeUp()
+        }
+
+        let pinnedHeaderY = tokensHeader.frame.minY
+        XCTAssertLessThan(pinnedHeaderY, initialHeaderY)
+        XCTAssertEqual(pinnedHeaderY, scrollTop, accuracy: 3)
+
+        app.swipeUp()
+        XCTAssertEqual(tokensHeader.frame.minY, pinnedHeaderY, accuracy: 3)
     }
 
     @MainActor

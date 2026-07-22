@@ -7,18 +7,30 @@ import Foundation
 
 enum Fmt {
     static func usd(_ n: Double) -> String {
-        let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"
-        f.maximumFractionDigits = 2; f.minimumFractionDigits = 2
-        return f.string(from: n as NSNumber) ?? "$0.00"
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.decimalSeparator = "."
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+        let value = formatter.string(from: abs(n) as NSNumber) ?? "0.00"
+        return (n < 0 ? "-$" : "$") + value
     }
     static func amount(_ n: Double) -> String {
-        let f = NumberFormatter(); f.numberStyle = .decimal
-        f.minimumFractionDigits = 2; f.maximumFractionDigits = 4
-        return f.string(from: n as NSNumber) ?? "0"
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 4
+        return formatter.string(from: n as NSNumber) ?? "0"
     }
-    static func pct(_ n: Double) -> String { (n > 0 ? "+" : "") + String(format: "%.2f%%", n) }
-    static func short(_ a: String) -> String {
-        guard a.count > 12 else { return a }
-        return a.prefix(6) + "…" + a.suffix(4)
+    static func pct(_ n: Double) -> String {
+        (n > 0 ? "+" : "") + String(format: "%.2f%%", n)
+    }
+    static func short(_ address: String) -> String {
+        guard address.count > 12 else { return address }
+        return String(address.prefix(6)) + "…" + String(address.suffix(6))
     }
 }

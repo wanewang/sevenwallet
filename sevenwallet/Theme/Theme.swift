@@ -6,6 +6,8 @@
 import SwiftUI
 
 struct Theme {
+    static let chipCorner: CGFloat = 14
+
     let bg: Color
     let fg1: Color          // primary text
     let fg2: Color          // secondary
