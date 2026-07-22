@@ -27,7 +27,14 @@ enum Fmt {
         return formatter.string(from: n as NSNumber) ?? "0"
     }
     static func pct(_ n: Double) -> String {
-        (n > 0 ? "+" : "") + String(format: "%.2f%%", n)
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.decimalSeparator = "."
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        let value = formatter.string(from: n as NSNumber) ?? "0.00"
+        return (n > 0 ? "+" : "") + value + "%"
     }
     static func short(_ address: String) -> String {
         guard address.count > 12 else { return address }
