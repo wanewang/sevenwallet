@@ -64,20 +64,26 @@ final class sevenwalletUITests: XCTestCase {
         app.launch()
 
         let topBar = app.otherElements["wallet-top-bar"]
-        let tokensHeader = app.otherElements["tokens-header"]
+        let scrollView = app.scrollViews.firstMatch
+        // The pinned section header is exposed as a StaticText (header trait),
+        // not an Other, so match it by identifier regardless of element type.
+        let tokensHeader = app.descendants(matching: .any)
+            .matching(identifier: "tokens-header").firstMatch
         XCTAssertTrue(topBar.waitForExistence(timeout: 2))
         XCTAssertTrue(tokensHeader.waitForExistence(timeout: 2))
 
         let initialHeaderY = tokensHeader.frame.minY
-        let topBarBottom = topBar.frame.maxY
+        // The header pins to the top of the scroll viewport, which sits directly
+        // below the top bar (VStack with no spacing).
+        let scrollTop = scrollView.frame.minY
 
-        for _ in 0..<4 where tokensHeader.frame.minY > topBarBottom + 3 {
+        for _ in 0..<4 where tokensHeader.frame.minY > scrollTop + 3 {
             app.swipeUp()
         }
 
         let pinnedHeaderY = tokensHeader.frame.minY
         XCTAssertLessThan(pinnedHeaderY, initialHeaderY)
-        XCTAssertEqual(pinnedHeaderY, topBarBottom, accuracy: 3)
+        XCTAssertEqual(pinnedHeaderY, scrollTop, accuracy: 3)
 
         app.swipeUp()
         XCTAssertEqual(tokensHeader.frame.minY, pinnedHeaderY, accuracy: 3)
