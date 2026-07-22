@@ -6,6 +6,7 @@ struct WalletCardView: View {
     let theme: Theme
 
     @State private var didCopy = false
+    @State private var copyResetTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -63,8 +64,10 @@ struct WalletCardView: View {
         UIPasteboard.general.string = viewModel.address
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         withAnimation { didCopy = true }
-        Task {
+        copyResetTask?.cancel()
+        copyResetTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
             withAnimation { didCopy = false }
         }
     }
