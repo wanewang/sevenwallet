@@ -39,7 +39,7 @@
 - Create sevenwalletTests/WalletCardViewModelTests.swift: address and aggregate-value tests.
 - Create sevenwalletTests/WalletHomeViewModelTests.swift: sample composition, shared identity, and theme tests.
 - Modify sevenwalletUITests/sevenwalletUITests.swift: content, theme-toggle, and pinned-header UI tests.
-- Create .gitignore: exclude the local visual-companion .superpowers/ directory.
+- Verify .gitignore: retain the worktree-safety entries for .superpowers/ and .worktrees/.
 
 ---
 
@@ -1099,21 +1099,23 @@ git commit --only sevenwallet/View/Wallet/WalletHomePage.swift sevenwallet/seven
 
 ---
 
-### Task 7: Run Final Verification and Ignore Companion Files
+### Task 7: Run Final Verification
 
 **Files:**
-- Create: .gitignore
+- Verify: .gitignore
 - Verify: all production and test files from Tasks 1–6.
 
 **Interfaces:**
 - Consumes: the completed WalletHomeView feature.
-- Produces: a clean verification record and an ignored .superpowers/ visual-companion directory.
+- Produces: a clean verification record while retaining the ignored worktree and visual-companion directories.
 
-- [ ] **Step 1: Ignore only the visual-companion working directory**
+- [ ] **Step 1: Verify the isolation directories remain ignored**
 
-~~~gitignore
-.superpowers/
+~~~bash
+rg -n '^\.superpowers/$|^\.worktrees/$' .gitignore
 ~~~
+
+Expected: both .superpowers/ and .worktrees/ are listed; do not change .gitignore.
 
 - [ ] **Step 2: Run every unit and UI test**
 
@@ -1151,9 +1153,6 @@ Expected:
 - git diff --check prints nothing.
 - git status lists no new implementation files outside this plan; any pre-existing staged ContentView.swift or Screen.swift changes remain preserved unless a planned commit intentionally included the same file.
 
-- [ ] **Step 5: Commit the ignore rule without including preserved user changes**
+- [ ] **Step 5: Record that final verification required no source changes**
 
-~~~bash
-git add .gitignore
-git commit --only .gitignore -m "chore: ignore brainstorming files"
-~~~
+Do not create an empty commit. Report the exact test and build commands from Steps 2–4 with their successful results.
