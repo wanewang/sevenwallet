@@ -11,7 +11,7 @@ import SwiftUI
 struct sevenwalletApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            WalletHomeView()
         }
     }
 }
