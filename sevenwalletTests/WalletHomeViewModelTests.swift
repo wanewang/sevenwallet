@@ -5,6 +5,90 @@ import Testing
 @MainActor
 struct WalletHomeViewModelTests {
     @Test
+    func missingConfigurationBecomesHomeError() async {
+        let home = AppDependencies.makeHomeViewModel(
+            arguments: [],
+            environment: [:],
+            infoDictionary: [:],
+            inMemoryStore: true
+        )
+
+        await home.loadTokens()
+
+        #expect(home.tokens.isEmpty)
+        #expect(home.tokenErrorMessage == "BASE_URL is not configured.")
+    }
+
+    @Test
+    func fixtureLoadsWithoutRuntimeConfiguration() async {
+        let home = AppDependencies.makeHomeViewModel(
+            arguments: ["UI_TEST_FIXTURE"],
+            environment: [:],
+            infoDictionary: [:]
+        )
+
+        await home.loadTokens()
+
+        #expect(home.walletCard == nil)
+        #expect(home.tokens.first?.symbol == "ETH")
+        #expect(home.tokens.first?.formattedPrice == "$1,926.42")
+        #expect(home.tokenErrorMessage == nil)
+    }
+
+    @Test
+    func fixtureSupportsPopulatedWalletAndLongTokenList() async {
+        let home = AppDependencies.makeHomeViewModel(
+            arguments: [
+                "UI_TEST_FIXTURE",
+                "UI_TEST_POPULATED_WALLET",
+                "UI_TEST_LONG_TOKEN_LIST"
+            ],
+            environment: [:],
+            infoDictionary: [:]
+        )
+
+        await home.loadTokens()
+
+        #expect(home.walletCard?.name == "Main Wallet")
+        #expect(home.tokens.count == 16)
+        #expect(Set(home.tokens.map(\.id)).count == 16)
+    }
+
+    @Test
+    func fixtureSupportsTokenFailure() async {
+        let home = AppDependencies.makeHomeViewModel(
+            arguments: ["UI_TEST_FIXTURE", "UI_TEST_TOKEN_ERROR"],
+            environment: [:],
+            infoDictionary: [:]
+        )
+
+        await home.loadTokens()
+
+        #expect(home.tokens.isEmpty)
+        #expect(home.tokenErrorMessage == "Unable to load tokens.")
+    }
+
+    @Test
+    func cancellingDelayedFixtureStopsLoadingWithoutPublishingTokens() async {
+        let home = AppDependencies.makeHomeViewModel(
+            arguments: ["UI_TEST_FIXTURE", "UI_TEST_DELAYED_TOKENS"],
+            environment: [:],
+            infoDictionary: [:]
+        )
+
+        let load = Task { await home.loadTokens() }
+        await waitForLoading(home)
+        #expect(home.isLoadingTokens)
+
+        load.cancel()
+        await load.value
+
+        #expect(!home.isLoadingTokens)
+        #expect(home.tokens.isEmpty)
+        #expect(home.tokenErrorMessage == nil)
+    }
+
+    @Test
     func cachedThenFreshUpdatesRows() async {
         let repository = ScriptedTokenRepository(events: [
             .cached([makeRepositoryToken(price: "1900")]),
