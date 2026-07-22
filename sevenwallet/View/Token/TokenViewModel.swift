@@ -42,13 +42,8 @@ final class TokenViewModel: Identifiable {
         balance * (marketPrice ?? 0)
     }
 
-    // Kept until the token-row rendering switches to the native-token fields.
     var iconColor: Color {
         Theme.accent
-    }
-
-    var formattedValue: String {
-        Fmt.usd(holdingValue)
     }
 
     var isNonnegativeChange: Bool {

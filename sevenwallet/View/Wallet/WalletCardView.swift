@@ -49,7 +49,11 @@ struct WalletCardView: View {
             }
         }
         .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: Theme.walletCardMinimumHeight,
+            alignment: .leading
+        )
         .background(theme.glass)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {

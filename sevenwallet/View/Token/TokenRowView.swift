@@ -20,12 +20,7 @@ struct TokenRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(viewModel.iconText)
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(viewModel.iconColor)
-                .clipShape(Circle())
+            tokenIcon
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(viewModel.symbol)
@@ -42,7 +37,7 @@ struct TokenRowView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 4) {
-                Text(viewModel.formattedValue)
+                Text(viewModel.formattedPrice)
                     .font(.headline)
                     .foregroundStyle(theme.fg1)
 
@@ -71,5 +66,26 @@ struct TokenRowView: View {
                 .frame(height: 1)
         }
         .clipShape(rowShape)
+    }
+
+    @ViewBuilder
+    private var tokenIcon: some View {
+        AsyncImage(url: viewModel.logoURL) { phase in
+            if case .success(let image) = phase {
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
+            } else {
+                Text(viewModel.iconText)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(viewModel.iconColor)
+                    .clipShape(Circle())
+            }
+        }
+        .accessibilityHidden(true)
     }
 }

@@ -40,6 +40,41 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testNoWalletHomeContent() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE"]
+        app.launch()
+
+        XCTAssertTrue(app.otherElements["empty-wallet-card"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["SEVEN WALLET"].exists)
+        XCTAssertTrue(app.staticTexts["Add your first wallet"].exists)
+        XCTAssertTrue(app.staticTexts["Import an address to start tracking"].exists)
+        XCTAssertFalse(app.buttons["copy-wallet-address-button"].exists)
+        XCTAssertTrue(app.staticTexts["ETH"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["-"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["$1,926.42"].exists)
+    }
+
+    @MainActor
+    func testTokenLoadingIndicator() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_DELAYED_TOKENS"]
+        app.launch()
+
+        XCTAssertTrue(app.activityIndicators["tokens-loading-indicator"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testInitialTokenError() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_TOKEN_ERROR"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["token-error-message"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["retry-tokens-button"].exists)
+    }
+
+    @MainActor
     func testThemeButtonTogglesDisplayedMode() throws {
         let app = XCUIApplication()
         app.launch()

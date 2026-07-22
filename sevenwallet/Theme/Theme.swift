@@ -7,6 +7,7 @@ import SwiftUI
 
 struct Theme {
     static let chipCorner: CGFloat = 14
+    static let walletCardMinimumHeight: CGFloat = 208
 
     let bg: Color
     let fg1: Color          // primary text
