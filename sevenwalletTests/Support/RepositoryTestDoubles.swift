@@ -5,6 +5,12 @@ enum RepositoryTestError: Swift.Error, Equatable, Sendable {
     case remoteFailure
 }
 
+struct TransactionRequest: Hashable, Sendable {
+    let address: EVMAddress
+    let limit: Int
+    let pageKey: String?
+}
+
 actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
     private let nativeResult: Result<[WalletToken], RepositoryTestError>
     private let portfolioResults: [EVMAddress: Result<TokenPortfolio, RepositoryTestError>]
@@ -63,19 +69,63 @@ actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
     }
 }
 
+actor TransactionRemoteDataSourceSpy: TransactionRemoteDataSourceProtocol {
+    private let results: [TransactionRequest: Result<TransactionPage, RepositoryTestError>]
+    private let gatedRequests: Set<TransactionRequest>
+    private var continuations: [TransactionRequest: [CheckedContinuation<TransactionPage, Swift.Error>]] = [:]
+
+    private(set) var callCount = 0
+    private(set) var callCounts: [TransactionRequest: Int] = [:]
+
+    init(
+        results: [TransactionRequest: Result<TransactionPage, RepositoryTestError>] = [:],
+        gatedRequests: Set<TransactionRequest> = []
+    ) {
+        self.results = results
+        self.gatedRequests = gatedRequests
+    }
+
+    func fetchTransactions(address: EVMAddress, limit: Int, pageKey: String?) async throws -> TransactionPage {
+        let request = TransactionRequest(address: address, limit: limit, pageKey: pageKey)
+        callCount += 1
+        callCounts[request, default: 0] += 1
+        guard gatedRequests.contains(request) else {
+            return try result(for: request).get()
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            continuations[request, default: []].append(continuation)
+        }
+    }
+
+    func releaseRequest(_ request: TransactionRequest) {
+        let continuations = continuations.removeValue(forKey: request) ?? []
+        let result = result(for: request)
+        continuations.forEach { $0.resume(with: result) }
+    }
+
+    private func result(for request: TransactionRequest) -> Result<TransactionPage, RepositoryTestError> {
+        results[request] ?? .failure(.remoteFailure)
+    }
+}
+
 actor WalletStoreSpy: WalletStoreProtocol {
     private var nativeCache: CachedResource<[WalletToken]>?
     private var portfolioCaches: [EVMAddress: CachedResource<TokenPortfolio>]
+    private var transactionCaches: [TransactionRequest: CachedResource<TransactionPage>]
 
     private(set) var nativeSaveDates: [Date] = []
     private(set) var portfolioSaveDates: [EVMAddress: [Date]] = [:]
+    private(set) var transactionSaveDates: [TransactionRequest: [Date]] = [:]
+    private(set) var transactionLoadCount = 0
 
     init(
         nativeCache: CachedResource<[WalletToken]>? = nil,
-        portfolioCaches: [EVMAddress: CachedResource<TokenPortfolio>] = [:]
+        portfolioCaches: [EVMAddress: CachedResource<TokenPortfolio>] = [:],
+        transactionCaches: [TransactionRequest: CachedResource<TransactionPage>] = [:]
     ) {
         self.nativeCache = nativeCache
         self.portfolioCaches = portfolioCaches
+        self.transactionCaches = transactionCaches
     }
 
     func loadNativeTokens() async throws -> CachedResource<[WalletToken]>? {
@@ -101,7 +151,8 @@ actor WalletStoreSpy: WalletStoreProtocol {
         limit: Int,
         pageKey: String?
     ) async throws -> CachedResource<TransactionPage>? {
-        nil
+        transactionLoadCount += 1
+        return transactionCaches[TransactionRequest(address: address, limit: limit, pageKey: pageKey)]
     }
 
     func saveTransactionPage(
@@ -109,7 +160,11 @@ actor WalletStoreSpy: WalletStoreProtocol {
         limit: Int,
         pageKey: String?,
         fetchedAt: Date
-    ) async throws {}
+    ) async throws {
+        let request = TransactionRequest(address: value.address, limit: limit, pageKey: pageKey)
+        transactionCaches[request] = CachedResource(value: value, fetchedAt: fetchedAt)
+        transactionSaveDates[request, default: []].append(fetchedAt)
+    }
 }
 
 struct StreamRecording<Value> {
@@ -167,5 +222,23 @@ func makeRepositoryPortfolio(address: EVMAddress, price: String) -> TokenPortfol
         fetchedAt: nil,
         network: "ethereum",
         tokens: [makeRepositoryToken(price: price)]
+    )
+}
+
+func makeRepositoryTransactionPage(address: EVMAddress, nextPageKey: String? = nil) -> TransactionPage {
+    TransactionPage(
+        address: address,
+        nextPageKey: nextPageKey,
+        transfers: [
+            WalletTransfer(
+                asset: "ETH",
+                blockNumber: "1",
+                category: "external",
+                from: "0xfrom",
+                hash: "0xhash",
+                to: "0xto",
+                value: "1"
+            )
+        ]
     )
 }

@@ -29,3 +29,22 @@ protocol TokenRepositoryProtocol: Sendable {
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error>
 }
+
+protocol TransactionRepositoryProtocol: Sendable {
+    func transactions(
+        address: EVMAddress,
+        limit: Int,
+        pageKey: String?,
+        policy: RefreshPolicy
+    ) -> AsyncThrowingStream<RepositoryLoadEvent<TransactionPage>, Swift.Error>
+}
+
+struct TransactionRequestKey: Hashable, Sendable {
+    let address: EVMAddress
+    let limit: Int
+    let pageKey: String?
+}
+
+enum RepositoryError: Swift.Error, Equatable {
+    case invalidTransactionLimit(Int)
+}
