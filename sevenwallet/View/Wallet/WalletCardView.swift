@@ -5,6 +5,8 @@ struct WalletCardView: View {
     let viewModel: WalletCardViewModel
     let theme: Theme
 
+    @State private var didCopy = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
@@ -14,9 +16,7 @@ struct WalletCardView: View {
 
                 Spacer(minLength: 8)
 
-                Button {
-                    UIPasteboard.general.string = viewModel.address
-                } label: {
+                Button(action: copyAddress) {
                     HStack(spacing: 6) {
                         Text(viewModel.shortenedAddress)
                             .font(.caption.monospaced())
@@ -24,14 +24,15 @@ struct WalletCardView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
 
-                        Image(systemName: "doc.on.doc")
+                        Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                             .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(didCopy ? Theme.pos : theme.fg2)
                             .frame(width: 20, height: 20)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Copy wallet address")
+                .accessibilityLabel(didCopy ? "Wallet address copied" : "Copy wallet address")
                 .accessibilityIdentifier("copy-wallet-address-button")
             }
 
@@ -56,5 +57,15 @@ struct WalletCardView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("wallet-card")
+    }
+
+    private func copyAddress() {
+        UIPasteboard.general.string = viewModel.address
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation { didCopy = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation { didCopy = false }
+        }
     }
 }

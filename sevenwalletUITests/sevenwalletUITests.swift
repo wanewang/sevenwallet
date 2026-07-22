@@ -28,14 +28,14 @@ final class sevenwalletUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.buttons["wallet-selector-button"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["theme-toggle-button"].exists)
-        XCTAssertTrue(app.staticTexts["Main Wallet"].exists)
-        XCTAssertTrue(app.staticTexts["TOTAL VALUE"].exists)
-        XCTAssertTrue(app.buttons["copy-wallet-address-button"].exists)
-        XCTAssertTrue(app.buttons["manage-tokens-button"].exists)
+        XCTAssertTrue(app.buttons["theme-toggle-button"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Main Wallet"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["TOTAL VALUE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["copy-wallet-address-button"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["manage-tokens-button"].waitForExistence(timeout: 2))
 
         for symbol in ["ETH", "BTC", "SOL", "USDC"] {
-            XCTAssertTrue(app.staticTexts[symbol].firstMatch.exists)
+            XCTAssertTrue(app.staticTexts[symbol].firstMatch.waitForExistence(timeout: 2))
         }
     }
 
@@ -46,11 +46,15 @@ final class sevenwalletUITests: XCTestCase {
 
         let themeButton = app.buttons["theme-toggle-button"]
         XCTAssertTrue(themeButton.waitForExistence(timeout: 2))
-        XCTAssertEqual(themeButton.label, "Dark theme")
+        XCTAssertEqual(themeButton.label, "Switch to light theme")
 
         themeButton.tap()
 
-        XCTAssertEqual(themeButton.label, "Light theme")
+        let switchedToDark = expectation(
+            for: NSPredicate(format: "label == %@", "Switch to dark theme"),
+            evaluatedWith: themeButton
+        )
+        wait(for: [switchedToDark], timeout: 2)
     }
 
     @MainActor

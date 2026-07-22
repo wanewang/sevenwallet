@@ -47,7 +47,7 @@ struct WalletTopBar: View {
                     }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isThemeLight ? "Light theme" : "Dark theme")
+            .accessibilityLabel(isThemeLight ? "Switch to dark theme" : "Switch to light theme")
             .accessibilityIdentifier("theme-toggle-button")
         }
         .frame(height: 64)
