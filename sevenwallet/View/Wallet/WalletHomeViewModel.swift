@@ -12,7 +12,9 @@ final class WalletHomeViewModel {
 
     private let tokenRepository: any TokenRepositoryProtocol
     private let dateProvider: DateProvider
-    private let walletIdentity: WalletIdentity?
+    private var selectedWallet: SavedWallet?
+    private var loadsSelectedPortfolio = false
+    private var didLoadSelection = false
     private var refreshCoordinator = PullRefreshCoordinator()
     private var requestGeneration = 0
 
@@ -28,16 +30,21 @@ final class WalletHomeViewModel {
         self.dateProvider = dateProvider
         tokens = []
 
-        if let walletName, let walletAddress {
-            let identity = WalletIdentity(name: walletName, address: walletAddress)
-            walletIdentity = identity
+        if let walletName,
+           let walletAddress,
+           let address = try? EVMAddress(walletAddress) {
+            let wallet = SavedWallet(
+                name: walletName,
+                address: address,
+                cardColor: .blue
+            )
+            selectedWallet = wallet
             walletCard = WalletCardViewModel(
-                name: identity.name,
-                address: identity.address,
+                wallet: wallet,
                 tokens: []
             )
         } else {
-            walletIdentity = nil
+            selectedWallet = nil
             walletCard = nil
         }
     }
@@ -47,6 +54,21 @@ final class WalletHomeViewModel {
     }
 
     func loadTokens() async {
+        await consume(policy: .ifExpired)
+    }
+
+    func load(wallet: SavedWallet?) async {
+        let addressChanged = selectedWallet?.address != wallet?.address
+        selectedWallet = wallet
+        loadsSelectedPortfolio = true
+
+        if addressChanged {
+            tokens = []
+        }
+        rebuildWalletCard()
+
+        guard addressChanged || !didLoadSelection else { return }
+        didLoadSelection = true
         await consume(policy: .ifExpired)
     }
 
@@ -139,7 +161,19 @@ final class WalletHomeViewModel {
         }
 
         do {
-            for try await event in tokenRepository.nativeTokens(policy: policy) {
+            let stream: AsyncThrowingStream<
+                RepositoryLoadEvent<[WalletToken]>,
+                Swift.Error
+            >
+            if loadsSelectedPortfolio, let selectedWallet {
+                stream = tokenRepository
+                    .portfolio(address: selectedWallet.address, policy: policy)
+                    .mapValues(\.tokens)
+            } else {
+                stream = tokenRepository.nativeTokens(policy: policy)
+            }
+
+            for try await event in stream {
                 guard generation == requestGeneration else { return }
                 switch event {
                 case .cached(let value), .fresh(let value):
@@ -158,19 +192,14 @@ final class WalletHomeViewModel {
     private func updateTokens(_ value: [WalletToken]) {
         let rows = value.map { TokenViewModel(token: $0) }
         tokens = rows
-        if let walletIdentity {
-            walletCard = WalletCardViewModel(
-                name: walletIdentity.name,
-                address: walletIdentity.address,
-                tokens: rows
-            )
+        rebuildWalletCard()
+    }
+
+    private func rebuildWalletCard() {
+        walletCard = selectedWallet.map {
+            WalletCardViewModel(wallet: $0, tokens: tokens)
         }
     }
-}
-
-private struct WalletIdentity {
-    let name: String
-    let address: String
 }
 
 private struct StaticTokenRepository: TokenRepositoryProtocol {
@@ -190,5 +219,33 @@ private struct StaticTokenRepository: TokenRepositoryProtocol {
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error> {
         AsyncThrowingStream { $0.finish() }
+    }
+}
+
+private extension AsyncThrowingStream {
+    func mapValues<Input, Output>(
+        _ transform: @escaping @Sendable (Input) -> Output
+    ) -> AsyncThrowingStream<RepositoryLoadEvent<Output>, Swift.Error>
+    where Element == RepositoryLoadEvent<Input>, Failure == Swift.Error {
+        AsyncThrowingStream<RepositoryLoadEvent<Output>, Swift.Error> { continuation in
+            let task = Task {
+                do {
+                    for try await event in self {
+                        switch event {
+                        case .cached(let value):
+                            continuation.yield(.cached(transform(value)))
+                        case .refreshing:
+                            continuation.yield(.refreshing)
+                        case .fresh(let value):
+                            continuation.yield(.fresh(transform(value)))
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
     }
 }

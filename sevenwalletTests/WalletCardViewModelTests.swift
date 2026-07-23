@@ -21,44 +21,59 @@ struct WalletCardViewModelTests {
     }
 
     @Test
-    func exposesWalletIdentityAndCalculatedTotal() {
+    func exposesWalletIdentityAndCalculatedTotal() throws {
         let first = token(balance: "2", price: "10")
         let second = token(balance: "3", price: "5")
-        let wallet = WalletCardViewModel(
+        let savedWallet = SavedWallet(
             name: "Main Wallet",
-            address: "0x1234567890ABCDEF",
+            address: try EVMAddress(
+                "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
+            ),
+            cardColor: .purple
+        )
+        let wallet = WalletCardViewModel(
+            wallet: savedWallet,
             tokens: [first, second]
         )
 
+        #expect(wallet.id == savedWallet.id)
         #expect(wallet.name == "Main Wallet")
-        #expect(wallet.shortenedAddress == "0x1234…ABCDEF")
+        #expect(wallet.cardColor == .purple)
+        #expect(wallet.shortenedAddress == "0x71a2…bc8f92")
         #expect(wallet.totalValue == 35)
         #expect(wallet.formattedTotalValue == "$35.00")
     }
 
     @Test
-    func missingMarketPriceContributesZero() {
+    func missingMarketPriceContributesZero() throws {
         let pricedToken = token(balance: "2", price: "10")
         let unpricedToken = token(balance: "999", price: nil)
         let wallet = WalletCardViewModel(
-            name: "Main Wallet",
-            address: "123456789012",
+            wallet: try savedWallet(),
             tokens: [pricedToken, unpricedToken]
         )
 
         #expect(wallet.totalValue == 20)
-        #expect(wallet.shortenedAddress == "123456789012")
     }
 
     @Test
-    func emptyWalletTotalsZero() {
+    func emptyWalletTotalsZero() throws {
         let wallet = WalletCardViewModel(
-            name: "Empty",
-            address: "short",
+            wallet: try savedWallet(name: "Empty"),
             tokens: []
         )
 
         #expect(wallet.totalValue == 0)
         #expect(wallet.formattedTotalValue == "$0.00")
+    }
+
+    private func savedWallet(name: String = "Main Wallet") throws -> SavedWallet {
+        SavedWallet(
+            name: name,
+            address: try EVMAddress(
+                "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
+            ),
+            cardColor: .blue
+        )
     }
 }

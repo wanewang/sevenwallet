@@ -106,6 +106,143 @@ struct WalletHomeViewModelTests {
     }
 
     @Test
+    func selectedWalletLoadsItsPortfolio() async throws {
+        let wallet = SavedWallet(
+            name: "Main",
+            address: try EVMAddress(
+                "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
+            ),
+            cardColor: .purple
+        )
+        let portfolio = TokenPortfolio(
+            address: wallet.address,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: [makeRepositoryToken(price: "2000")]
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[.fresh(portfolio)]]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+
+        #expect(repository.requestedPortfolioAddresses == [wallet.address])
+        #expect(home.walletCard?.id == wallet.id)
+        #expect(home.walletCard?.name == "Main")
+        #expect(home.walletCard?.cardColor == .purple)
+        #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+    }
+
+    @Test
+    func editingIdentityRebuildsCardWithoutReloadingPortfolio() async throws {
+        let original = try makeSavedWallet(name: "Main", color: .blue)
+        let edited = SavedWallet(
+            id: original.id,
+            name: "Renamed",
+            address: original.address,
+            cardColor: .amber,
+            createdAt: original.createdAt
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [
+                [.fresh(TokenPortfolio(
+                    address: original.address,
+                    fetchedAt: nil,
+                    network: "ethereum",
+                    tokens: [makeRepositoryToken(price: "2000")]
+                ))]
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: original)
+        await home.load(wallet: edited)
+
+        #expect(repository.requestedPortfolioAddresses == [original.address])
+        #expect(home.walletCard?.name == "Renamed")
+        #expect(home.walletCard?.cardColor == .amber)
+    }
+
+    @Test
+    func changingAddressClearsOldPortfolioRows() async throws {
+        let original = try makeSavedWallet(name: "Main", color: .blue)
+        let replacement = SavedWallet(
+            name: "Second",
+            address: try EVMAddress(
+                "0x81A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F93"
+            ),
+            cardColor: .teal
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [
+                [.fresh(makeRepositoryPortfolio(
+                    address: original.address,
+                    price: "2000"
+                ))],
+                [.refreshing]
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: original)
+        #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+
+        await home.load(wallet: replacement)
+
+        #expect(repository.requestedPortfolioAddresses == [
+            original.address, replacement.address
+        ])
+        #expect(home.walletCard?.id == replacement.id)
+        #expect(home.walletCard?.tokens.isEmpty == true)
+        #expect(home.tokens.isEmpty)
+    }
+
+    @Test
+    func refreshAndRetryUseSelectedPortfolio() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .blue)
+        let portfolio = makeRepositoryPortfolio(
+            address: wallet.address,
+            price: "2000"
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [
+                [.fresh(portfolio)],
+                [.fresh(portfolio)],
+                [.fresh(portfolio)]
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+        await home.refreshTokens()
+        await home.retryTokens()
+
+        #expect(repository.requestedPortfolioAddresses == [
+            wallet.address, wallet.address, wallet.address
+        ])
+    }
+
+    @Test
+    func deletingSelectionReturnsToNativeTokensAndIgnoresOldResults() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .blue)
+        let repository = PortfolioTokenRepositorySpy(
+            nativeScripts: [[.fresh([makeRepositoryToken(price: "1900")])]],
+            portfolioScripts: [[.refreshing]],
+            holdsPortfolioOpen: true
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        let oldLoad = Task { await home.load(wallet: wallet) }
+        await waitForLoading(home)
+        await home.load(wallet: nil)
+        oldLoad.cancel()
+
+        #expect(home.walletCard == nil)
+        #expect(home.tokens.first?.formattedPrice == "$1,900.00")
+    }
+
+    @Test
     func refreshingEventKeepsSpinnerVisibleUntilFreshDataArrives() async {
         let repository = ScriptedTokenRepository(scripts: [
             .gated(
@@ -306,5 +443,18 @@ struct WalletHomeViewModelTests {
             guard !home.isLoadingTokens else { return }
             await Task.yield()
         }
+    }
+
+    private func makeSavedWallet(
+        name: String,
+        color: WalletCardColor
+    ) throws -> SavedWallet {
+        SavedWallet(
+            name: name,
+            address: try EVMAddress(
+                "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
+            ),
+            cardColor: color
+        )
     }
 }

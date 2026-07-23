@@ -250,6 +250,56 @@ final class ScriptedDateProvider: @unchecked Sendable {
     }
 }
 
+@MainActor
+final class PortfolioTokenRepositorySpy: TokenRepositoryProtocol {
+    typealias NativeEvent = RepositoryLoadEvent<[WalletToken]>
+    typealias PortfolioEvent = RepositoryLoadEvent<TokenPortfolio>
+
+    private var nativeScripts: [[NativeEvent]]
+    private var portfolioScripts: [[PortfolioEvent]]
+    private let holdsPortfolioOpen: Bool
+    private(set) var requestedPortfolioAddresses: [EVMAddress] = []
+
+    init(
+        nativeScripts: [[NativeEvent]] = [],
+        portfolioScripts: [[PortfolioEvent]] = [],
+        holdsPortfolioOpen: Bool = false
+    ) {
+        self.nativeScripts = nativeScripts
+        self.portfolioScripts = portfolioScripts
+        self.holdsPortfolioOpen = holdsPortfolioOpen
+    }
+
+    func nativeTokens(
+        policy: RefreshPolicy
+    ) -> AsyncThrowingStream<NativeEvent, Swift.Error> {
+        stream(events: nativeScripts.removeFirst(), holdsOpen: false)
+    }
+
+    func portfolio(
+        address: EVMAddress,
+        policy: RefreshPolicy
+    ) -> AsyncThrowingStream<PortfolioEvent, Swift.Error> {
+        requestedPortfolioAddresses.append(address)
+        return stream(
+            events: portfolioScripts.removeFirst(),
+            holdsOpen: holdsPortfolioOpen
+        )
+    }
+
+    private func stream<Value: Sendable>(
+        events: [RepositoryLoadEvent<Value>],
+        holdsOpen: Bool
+    ) -> AsyncThrowingStream<RepositoryLoadEvent<Value>, Swift.Error> {
+        AsyncThrowingStream { continuation in
+            for event in events {
+                continuation.yield(event)
+            }
+            if !holdsOpen { continuation.finish() }
+        }
+    }
+}
+
 struct TransactionRequest: Hashable, Sendable {
     let address: EVMAddress
     let limit: Int
