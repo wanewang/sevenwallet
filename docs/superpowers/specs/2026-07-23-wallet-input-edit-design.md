@@ -63,11 +63,11 @@ This iteration excludes:
 
 - Load all saved wallets in creation order.
 - Load and update the persisted selected-wallet ID.
-- Atomically add the first wallet and select it after verifying that persistent storage is empty.
+- Atomically add a wallet and select it.
 - Update only a wallet's name and card color.
 - Delete a wallet.
 
-The schema can store multiple wallet records even though the current UI creates only the first one. The first-wallet operation checks persistent state and saves the wallet plus its selected-wallet reference in one SwiftData transaction. This prevents duplicate navigation, repeated submission, or a partial selection write from leaving an inaccessible wallet. A future multi-wallet flow can add a separate unrestricted insert operation without changing the schema.
+The schema and store can create multiple wallet records even though the current UI exposes only the first-wallet entry point. Adding saves the wallet plus its selected-wallet reference in one SwiftData transaction, preventing a partial selection write from leaving an inaccessible wallet. The store does not reject a second wallet, so a future multi-wallet flow can reuse the same operation without changing persistence behavior.
 
 The saved-wallet models join the existing SwiftData schema and model container. Production and test composition inject the saved-wallet store rather than letting views construct a `ModelContext`.
 
@@ -176,7 +176,7 @@ The add action remains disabled until both fields are valid. The edit action req
 ### Add
 
 1. The form validates and normalizes name and address.
-2. `WalletSession` asks `SavedWalletStore` to atomically persist and select the first wallet.
+2. `WalletSession` asks `SavedWalletStore` to atomically persist and select the new wallet.
 3. Only after that transaction succeeds does the session publish the selected wallet.
 4. Navigation returns home.
 5. Home begins cache-first portfolio loading for that address.
@@ -222,7 +222,7 @@ Native-token metadata is not deleted because it is not address-linked. Cache-fir
 - A wallet add round-trips name, address, card color, ID, and creation date.
 - A fresh container using the same persistent store reloads the wallet and selection.
 - The schema stores multiple wallets in deterministic creation order.
-- The atomic first-wallet operation rejects creating a second wallet while one exists.
+- Adding multiple wallets through the store succeeds and updates the persisted selection to the newest wallet.
 - Editing changes only name and card color.
 - Stale selection resolves to the first persisted wallet.
 - Confirmed deletion removes the wallet, its selection, its portfolio cache, and all transaction pages for that address.
