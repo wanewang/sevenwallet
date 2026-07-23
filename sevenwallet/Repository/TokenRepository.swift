@@ -22,7 +22,7 @@ final class TokenRepository: TokenRepositoryProtocol {
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<[WalletToken]>, Swift.Error> {
         AsyncThrowingStream { continuation in
-            Task { @MainActor in
+            let task = Task { @MainActor in
                 do {
                     let cached: CachedResource<[WalletToken]>?
                     do {
@@ -42,10 +42,13 @@ final class TokenRepository: TokenRepositoryProtocol {
                     let value = try await refreshNative()
                     continuation.yield(.fresh(value))
                     continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
         }
     }
 
@@ -54,7 +57,7 @@ final class TokenRepository: TokenRepositoryProtocol {
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error> {
         AsyncThrowingStream { continuation in
-            Task { @MainActor in
+            let task = Task { @MainActor in
                 do {
                     let cached: CachedResource<TokenPortfolio>?
                     do {
@@ -74,10 +77,13 @@ final class TokenRepository: TokenRepositoryProtocol {
                     let value = try await refreshPortfolio(address: address)
                     continuation.yield(.fresh(value))
                     continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
         }
     }
 

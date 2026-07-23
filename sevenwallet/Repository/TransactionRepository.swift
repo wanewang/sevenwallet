@@ -24,7 +24,7 @@ final class TransactionRepository: TransactionRepositoryProtocol {
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TransactionPage>, Swift.Error> {
         AsyncThrowingStream { continuation in
-            Task { @MainActor in
+            let task = Task { @MainActor in
                 do {
                     guard (1...100).contains(limit) else {
                         throw RepositoryError.invalidTransactionLimit(limit)
@@ -53,10 +53,13 @@ final class TransactionRepository: TransactionRepositoryProtocol {
                     let page = try await refresh(key)
                     continuation.yield(.fresh(page))
                     continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
         }
     }
 
