@@ -35,10 +35,16 @@ enum AppDependencies {
             let remote = TokenRemoteDataSource(client: client)
             let repository = TokenRepository(remote: remote, store: store)
             return WalletHomeViewModel(tokenRepository: repository)
-        } catch {
+        } catch let error as AppConfiguration.Error {
             return WalletHomeViewModel(
                 tokenRepository: FailingTokenRepository(
                     message: error.localizedDescription
+                )
+            )
+        } catch {
+            return WalletHomeViewModel(
+                tokenRepository: FailingTokenRepository(
+                    message: "Unable to load wallet data."
                 )
             )
         }
