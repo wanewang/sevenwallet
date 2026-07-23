@@ -74,7 +74,10 @@ final class TransactionRepository: TransactionRepositoryProtocol {
             return try await task.value
         }
 
-        let task = Task { @MainActor in
+        let remote = remote
+        let store = store
+        let dateProvider = dateProvider
+        let task = Task {
             let value = try await remote.fetchTransactions(
                 address: key.address,
                 limit: key.limit,
