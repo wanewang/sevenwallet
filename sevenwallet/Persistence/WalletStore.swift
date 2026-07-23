@@ -6,6 +6,10 @@ struct CachedResource<Value: Sendable>: Sendable {
     let fetchedAt: Date
 }
 
+protocol AddressCachePurging: Sendable {
+    func purgeAddressData(address: EVMAddress) async throws
+}
+
 protocol WalletStoreProtocol: Sendable {
     func loadNativeTokens() async throws -> CachedResource<[WalletToken]>?
     func saveNativeTokens(_ value: [WalletToken], fetchedAt: Date) async throws
@@ -16,7 +20,7 @@ protocol WalletStoreProtocol: Sendable {
 }
 
 @ModelActor
-actor WalletStore: WalletStoreProtocol {
+actor WalletStore: WalletStoreProtocol, AddressCachePurging {
     func loadNativeTokens() throws -> CachedResource<[WalletToken]>? {
         var descriptor = FetchDescriptor<NativeTokensCacheRecord>(predicate: #Predicate { $0.key == "native" })
         descriptor.fetchLimit = 1
@@ -111,6 +115,28 @@ actor WalletStore: WalletStoreProtocol {
                     )
                 )
             }
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+
+    func purgeAddressData(address: EVMAddress) throws {
+        let normalizedAddress = address.rawValue
+        let portfolios = try modelContext.fetch(
+            FetchDescriptor<PortfolioCacheRecord>(
+                predicate: #Predicate { $0.address == normalizedAddress }
+            )
+        )
+        let pages = try modelContext.fetch(
+            FetchDescriptor<TransactionPageCacheRecord>(
+                predicate: #Predicate { $0.address == normalizedAddress }
+            )
+        )
+        do {
+            portfolios.forEach(modelContext.delete)
+            pages.forEach(modelContext.delete)
             try modelContext.save()
         } catch {
             modelContext.rollback()

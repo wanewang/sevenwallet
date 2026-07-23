@@ -5,6 +5,44 @@ import Testing
 
 @MainActor
 struct WalletStoreTests {
+    @Test func purgeDeletesOnlyMatchingAddressData() async throws {
+        let store = try makeStore()
+        let deletedAddress = try testAddress()
+        let keptAddress = try EVMAddress("0x1234567890123456789012345678901234567890")
+        let deletedPortfolio = TokenPortfolio(
+            address: deletedAddress,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: []
+        )
+        let keptPortfolio = TokenPortfolio(
+            address: keptAddress,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: []
+        )
+        try await store.saveNativeTokens([makeToken(price: "100")], fetchedAt: .distantPast)
+        try await store.savePortfolio(deletedPortfolio, fetchedAt: .distantPast)
+        try await store.savePortfolio(keptPortfolio, fetchedAt: .distantPast)
+        try await store.saveTransactionPage(
+            TransactionPage(address: deletedAddress, nextPageKey: nil, transfers: []),
+            limit: 25,
+            pageKey: nil,
+            fetchedAt: .distantPast
+        )
+
+        try await store.purgeAddressData(address: deletedAddress)
+
+        #expect(try await store.loadPortfolio(address: deletedAddress) == nil)
+        #expect(try await store.loadTransactionPage(
+            address: deletedAddress,
+            limit: 25,
+            pageKey: nil
+        ) == nil)
+        #expect(try await store.loadPortfolio(address: keptAddress)?.value == keptPortfolio)
+        #expect(try await store.loadNativeTokens() != nil)
+    }
+
     @Test func nativeSnapshotReplacesAtomically() async throws {
         let store = try makeStore()
         let first = [makeToken(price: "1926.42")]
