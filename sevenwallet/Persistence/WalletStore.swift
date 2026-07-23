@@ -17,7 +17,7 @@ protocol WalletStoreProtocol: Sendable {
 
 @ModelActor
 actor WalletStore: WalletStoreProtocol {
-    func loadNativeTokens() async throws -> CachedResource<[WalletToken]>? {
+    func loadNativeTokens() throws -> CachedResource<[WalletToken]>? {
         var descriptor = FetchDescriptor<NativeTokensCacheRecord>(predicate: #Predicate { $0.key == "native" })
         descriptor.fetchLimit = 1
         guard let record = try modelContext.fetch(descriptor).first else { return nil }
@@ -46,7 +46,7 @@ actor WalletStore: WalletStoreProtocol {
         }
     }
 
-    func loadPortfolio(address: EVMAddress) async throws -> CachedResource<TokenPortfolio>? {
+    func loadPortfolio(address: EVMAddress) throws -> CachedResource<TokenPortfolio>? {
         let normalizedAddress = address.rawValue
         var descriptor = FetchDescriptor<PortfolioCacheRecord>(predicate: #Predicate { $0.address == normalizedAddress })
         descriptor.fetchLimit = 1
@@ -57,7 +57,7 @@ actor WalletStore: WalletStoreProtocol {
         )
     }
 
-    func savePortfolio(_ value: TokenPortfolio, fetchedAt: Date) async throws {
+    func savePortfolio(_ value: TokenPortfolio, fetchedAt: Date) throws {
         let payload = try JSONEncoder().encode(value)
         let normalizedAddress = value.address.rawValue
         var descriptor = FetchDescriptor<PortfolioCacheRecord>(predicate: #Predicate { $0.address == normalizedAddress })
@@ -77,7 +77,7 @@ actor WalletStore: WalletStoreProtocol {
         }
     }
 
-    func loadTransactionPage(address: EVMAddress, limit: Int, pageKey: String?) async throws -> CachedResource<TransactionPage>? {
+    func loadTransactionPage(address: EVMAddress, limit: Int, pageKey: String?) throws -> CachedResource<TransactionPage>? {
         let key = transactionKey(address: address, limit: limit, pageKey: pageKey)
         var descriptor = FetchDescriptor<TransactionPageCacheRecord>(predicate: #Predicate { $0.key == key })
         descriptor.fetchLimit = 1
@@ -88,7 +88,7 @@ actor WalletStore: WalletStoreProtocol {
         )
     }
 
-    func saveTransactionPage(_ value: TransactionPage, limit: Int, pageKey: String?, fetchedAt: Date) async throws {
+    func saveTransactionPage(_ value: TransactionPage, limit: Int, pageKey: String?, fetchedAt: Date) throws {
         let payload = try JSONEncoder().encode(value)
         let address = value.address
         let key = transactionKey(address: address, limit: limit, pageKey: pageKey)
