@@ -51,20 +51,14 @@ actor WalletStore: WalletStoreProtocol {
         var descriptor = FetchDescriptor<PortfolioCacheRecord>(predicate: #Predicate { $0.address == normalizedAddress })
         descriptor.fetchLimit = 1
         guard let record = try modelContext.fetch(descriptor).first else { return nil }
-        let payload = record.payload
-        let fetchedAt = record.fetchedAt
         return CachedResource(
-            value: try await MainActor.run {
-                try JSONDecoder().decode(TokenPortfolio.self, from: payload)
-            },
-            fetchedAt: fetchedAt
+            value: try JSONDecoder().decode(TokenPortfolio.self, from: record.payload),
+            fetchedAt: record.fetchedAt
         )
     }
 
     func savePortfolio(_ value: TokenPortfolio, fetchedAt: Date) async throws {
-        let payload = try await MainActor.run {
-            try JSONEncoder().encode(value)
-        }
+        let payload = try JSONEncoder().encode(value)
         let normalizedAddress = value.address.rawValue
         var descriptor = FetchDescriptor<PortfolioCacheRecord>(predicate: #Predicate { $0.address == normalizedAddress })
         descriptor.fetchLimit = 1
@@ -88,20 +82,14 @@ actor WalletStore: WalletStoreProtocol {
         var descriptor = FetchDescriptor<TransactionPageCacheRecord>(predicate: #Predicate { $0.key == key })
         descriptor.fetchLimit = 1
         guard let record = try modelContext.fetch(descriptor).first else { return nil }
-        let payload = record.payload
-        let fetchedAt = record.fetchedAt
         return CachedResource(
-            value: try await MainActor.run {
-                try JSONDecoder().decode(TransactionPage.self, from: payload)
-            },
-            fetchedAt: fetchedAt
+            value: try JSONDecoder().decode(TransactionPage.self, from: record.payload),
+            fetchedAt: record.fetchedAt
         )
     }
 
     func saveTransactionPage(_ value: TransactionPage, limit: Int, pageKey: String?, fetchedAt: Date) async throws {
-        let payload = try await MainActor.run {
-            try JSONEncoder().encode(value)
-        }
+        let payload = try JSONEncoder().encode(value)
         let address = value.address
         let key = transactionKey(address: address, limit: limit, pageKey: pageKey)
         var descriptor = FetchDescriptor<TransactionPageCacheRecord>(predicate: #Predicate { $0.key == key })

@@ -156,8 +156,8 @@ final class sevenwalletUITests: XCTestCase {
         XCTAssertTrue(populatedCard.waitForExistence(timeout: 2))
         let populatedHeight = populatedCard.frame.height
 
-        XCTAssertGreaterThanOrEqual(emptyHeight, 208)
-        XCTAssertGreaterThanOrEqual(populatedHeight, 208)
+        XCTAssertGreaterThanOrEqual(emptyHeight, 212)
+        XCTAssertGreaterThanOrEqual(populatedHeight, 212)
         XCTAssertEqual(emptyHeight, populatedHeight, accuracy: 1)
     }
 

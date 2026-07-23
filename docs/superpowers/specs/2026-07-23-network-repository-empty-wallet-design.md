@@ -168,7 +168,7 @@ The card contains one vertical layout:
 
 It uses the themed glass fill, a subtle dashed rounded border, and responsive light/dark colors. It is visual-only for this request and does not expose a control that appears actionable but performs no work.
 
-The empty and populated wallet cards share a 208-point minimum height, matching the logical height of the supplied 2x reference at the current page width. The populated `WalletCardView` expands to that size so switching wallet state later will not shift the Tokens section. Both may grow beyond the minimum when accessibility text sizes require it.
+The empty and populated wallet cards share a 212-point minimum height, matching the logical height of the supplied 2x reference at the current page width. The populated `WalletCardView` expands to that size so switching wallet state later will not shift the Tokens section. Both may grow beyond the minimum when accessibility text sizes require it.
 
 ### Tokens section
 

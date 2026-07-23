@@ -1,6 +1,6 @@
 import Foundation
 
-struct EVMAddress: RawRepresentable, Codable, Hashable, Sendable {
+nonisolated struct EVMAddress: RawRepresentable, Codable, Hashable, Sendable {
     enum Error: Swift.Error, Equatable, LocalizedError {
         case invalid(String)
 

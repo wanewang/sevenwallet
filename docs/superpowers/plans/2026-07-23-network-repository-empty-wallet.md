@@ -20,7 +20,7 @@
 - Coalesce matching in-flight requests.
 - Implement `/v1/native`, `/v1/addresses/{address}/tokens`, and paginated `/v1/addresses/{address}/transactions`.
 - Only `/v1/native` is consumed by the current UI; address import remains out of scope.
-- Empty and populated wallet cards share a 208-point minimum height.
+- Empty and populated wallet cards share a 212-point minimum height.
 - Add no dependency or Fastlane setup; tests never contact the live service.
 
 ## File Map
@@ -983,7 +983,7 @@ xcodebuild -project sevenwallet.xcodeproj -scheme sevenwallet -destination 'plat
 
 - [ ] **Step 3: Add shared height and empty card**
 
-Add `Theme.walletCardMinimumHeight = 208`, apply it to `WalletCardView`, and create:
+Add `Theme.walletCardMinimumHeight = 212`, apply it to `WalletCardView`, and create:
 
 ```swift
 struct EmptyWalletCardView: View {
@@ -1114,7 +1114,7 @@ struct sevenwalletApp: App {
 
 - [ ] **Step 6: Verify height and existing UI behavior**
 
-Launch empty then populated fixtures; assert both card heights are at least 208 and equal within one point. Add `UI_TEST_FIXTURE` to all existing UI tests and keep `UI_TEST_LONG_TOKEN_LIST` for pinning.
+Launch empty then populated fixtures; assert both card heights are at least 212 and equal within one point. Add `UI_TEST_FIXTURE` to all existing UI tests and keep `UI_TEST_LONG_TOKEN_LIST` for pinning.
 
 - [ ] **Step 7: Run and commit**
 
