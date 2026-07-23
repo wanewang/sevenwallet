@@ -1,0 +1,11 @@
+// Template for Config.xcconfig.
+// Copy this file to Config.xcconfig and fill in your backend base URL:
+//
+//   cp Config.example.xcconfig Config.xcconfig
+//
+// The value feeds INFOPLIST_KEY_BASE_URL, which AppConfiguration reads
+// from the app's Info.plist at launch.
+//
+// Note: xcconfig treats "//" as a comment, so the $() empty-expansion
+// splits the URL's slashes to keep "https://" intact.
+BASE_URL = https:/$()/your-backend-host.example.com/

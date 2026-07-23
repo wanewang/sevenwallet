@@ -27,6 +27,7 @@
 		20ED200F3010B9C400597762 /* sevenwallet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = sevenwallet.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20ED201C3010B9C600597762 /* sevenwalletTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = sevenwalletTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		20ED20263010B9C600597762 /* sevenwalletUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = sevenwalletUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0000CF160000000000000001 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +76,7 @@
 		20ED20063010B9C400597762 = {
 			isa = PBXGroup;
 			children = (
+				0000CF160000000000000001 /* Config.xcconfig */,
 				20ED20113010B9C400597762 /* sevenwallet */,
 				20ED201F3010B9C600597762 /* sevenwalletTests */,
 				20ED20293010B9C600597762 /* sevenwalletUITests */,
@@ -390,6 +392,7 @@
 		};
 		20ED20313010B9C600597762 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0000CF160000000000000001 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -397,7 +400,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_BASE_URL = "$(BASE_URL)";
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -426,6 +429,7 @@
 		};
 		20ED20323010B9C600597762 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0000CF160000000000000001 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -433,7 +437,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_BASE_URL = "$(BASE_URL)";
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

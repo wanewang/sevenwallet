@@ -1,2 +1,5 @@
 .superpowers/
 .worktrees/
+
+# Local build config holding the backend BASE_URL (copy from Config.example.xcconfig)
+Config.xcconfig
