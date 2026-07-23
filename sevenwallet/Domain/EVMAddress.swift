@@ -20,9 +20,9 @@ nonisolated struct EVMAddress: RawRepresentable, Codable, Hashable, Sendable {
         rawValue = normalized
     }
 
-    init(rawValue: String) {
-        precondition((try? EVMAddress(rawValue)) != nil)
-        self.rawValue = rawValue.lowercased()
+    init?(rawValue: String) {
+        guard let address = try? EVMAddress(rawValue) else { return nil }
+        self = address
     }
 
     init(from decoder: Decoder) throws {
