@@ -1,0 +1,15 @@
+// Committed build config. Safe defaults only — do NOT put secrets here.
+//
+// BASE_URL is empty by default so the project builds with no local setup
+// (CI, fresh checkout). With an empty BASE_URL the app shows the
+// "BASE_URL is not configured" state, which is the correct behavior when
+// no backend is provided.
+//
+// To point the app at a backend, create a local override (gitignored):
+//
+//   cp Config.example.xcconfig Config.local.xcconfig
+//
+// Config.local.xcconfig is optionally included below and overrides the
+// default when present.
+BASE_URL =
+#include? "Config.local.xcconfig"

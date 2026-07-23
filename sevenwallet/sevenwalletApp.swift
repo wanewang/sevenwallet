@@ -9,17 +9,11 @@ import SwiftUI
 
 @main
 struct sevenwalletApp: App {
-    private var tokenSetCopies: Int {
-        ProcessInfo.processInfo.arguments.contains("UI_TEST_LONG_TOKEN_LIST")
-            ? 4
-            : 1
-    }
+    @State private var homeViewModel = AppDependencies.makeHomeViewModel()
 
     var body: some Scene {
         WindowGroup {
-            WalletHomeView(
-                viewModel: .sample(tokenSetCopies: tokenSetCopies)
-            )
+            WalletHomeView(viewModel: homeViewModel)
         }
     }
 }

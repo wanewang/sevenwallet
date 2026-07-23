@@ -25,6 +25,7 @@ final class sevenwalletUITests: XCTestCase {
     @MainActor
     func testWalletHomeContent() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_POPULATED_WALLET"]
         app.launch()
 
         XCTAssertTrue(app.buttons["wallet-selector-button"].waitForExistence(timeout: 2))
@@ -40,8 +41,52 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testNoWalletHomeContent() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE"]
+        app.launch()
+
+        XCTAssertTrue(app.otherElements["empty-wallet-card"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["SEVEN WALLET"].exists)
+        XCTAssertTrue(app.staticTexts["Add your first wallet"].exists)
+        XCTAssertTrue(app.staticTexts["Import an address to start tracking"].exists)
+        XCTAssertFalse(app.buttons["copy-wallet-address-button"].exists)
+        XCTAssertTrue(app.staticTexts["ETH"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Ether"].exists)
+        XCTAssertTrue(app.staticTexts["-"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["$1,926.42"].exists)
+    }
+
+    @MainActor
+    func testTokenLoadingIndicator() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UI_TEST_FIXTURE",
+            "UI_TEST_DELAYED_TOKENS",
+            "UI_TEST_HOLD_TOKEN_LOADING"
+        ]
+        app.launch()
+
+        let loadingIndicator = app.descendants(matching: .any)
+            .matching(identifier: "tokens-loading-indicator")
+            .firstMatch
+        XCTAssertTrue(loadingIndicator.waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testInitialTokenError() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_TOKEN_ERROR"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["token-error-message"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["retry-tokens-button"].exists)
+    }
+
+    @MainActor
     func testThemeButtonTogglesDisplayedMode() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE"]
         app.launch()
 
         let themeButton = app.buttons["theme-toggle-button"]
@@ -60,7 +105,7 @@ final class sevenwalletUITests: XCTestCase {
     @MainActor
     func testTokensHeaderPinsBelowTopBar() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["UI_TEST_LONG_TOKEN_LIST"]
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_LONG_TOKEN_LIST"]
         app.launch()
 
         let topBar = app.otherElements["wallet-top-bar"]
@@ -90,10 +135,39 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testWalletCardsShareMinimumHeight() throws {
+        let emptyApp = XCUIApplication()
+        emptyApp.launchArguments = ["UI_TEST_FIXTURE"]
+        emptyApp.launch()
+
+        let emptyCard = emptyApp.otherElements["empty-wallet-card"]
+        XCTAssertTrue(emptyCard.waitForExistence(timeout: 2))
+        let emptyHeight = emptyCard.frame.height
+        emptyApp.terminate()
+
+        let populatedApp = XCUIApplication()
+        populatedApp.launchArguments = [
+            "UI_TEST_FIXTURE",
+            "UI_TEST_POPULATED_WALLET"
+        ]
+        populatedApp.launch()
+
+        let populatedCard = populatedApp.otherElements["wallet-card"]
+        XCTAssertTrue(populatedCard.waitForExistence(timeout: 2))
+        let populatedHeight = populatedCard.frame.height
+
+        XCTAssertGreaterThanOrEqual(emptyHeight, 212)
+        XCTAssertGreaterThanOrEqual(populatedHeight, 212)
+        XCTAssertEqual(emptyHeight, populatedHeight, accuracy: 1)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+            let app = XCUIApplication()
+            app.launchArguments = ["UI_TEST_FIXTURE"]
+            app.launch()
         }
     }
 }
