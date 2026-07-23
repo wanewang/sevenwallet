@@ -14,6 +14,7 @@ final class WalletHomeViewModel {
     private let dateProvider: DateProvider
     private var selectedWallet: SavedWallet?
     private var compatibilityWallet: SavedWallet?
+    private var resourceState = ResourceState.idle
     private var refreshCoordinator = PullRefreshCoordinator()
     private var requestGeneration = 0
 
@@ -65,10 +66,11 @@ final class WalletHomeViewModel {
 
         if addressChanged {
             tokens = []
+            resourceState = .idle
         }
         rebuildWalletCard()
 
-        guard addressChanged || tokens.isEmpty else { return }
+        guard resourceState == .idle else { return }
         await consume(policy: .ifExpired)
     }
 
@@ -153,10 +155,14 @@ final class WalletHomeViewModel {
     private func consume(policy: RefreshPolicy) async {
         requestGeneration += 1
         let generation = requestGeneration
+        resourceState = .loading
         tokenErrorMessage = nil
         defer {
             if generation == requestGeneration {
                 isLoadingTokens = false
+                if resourceState == .loading {
+                    resourceState = .idle
+                }
             }
         }
 
@@ -183,6 +189,10 @@ final class WalletHomeViewModel {
                     isLoadingTokens = true
                 }
             }
+            guard generation == requestGeneration, !Task.isCancelled else {
+                return
+            }
+            resourceState = .loaded
         } catch {
             guard generation == requestGeneration, !Task.isCancelled else { return }
             tokenErrorMessage = error.localizedDescription
@@ -200,6 +210,12 @@ final class WalletHomeViewModel {
             WalletCardViewModel(wallet: $0, tokens: tokens)
         }
     }
+}
+
+private enum ResourceState: Equatable {
+    case idle
+    case loading
+    case loaded
 }
 
 private struct StaticTokenRepository: TokenRepositoryProtocol {

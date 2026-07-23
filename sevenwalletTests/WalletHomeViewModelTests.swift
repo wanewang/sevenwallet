@@ -179,6 +179,62 @@ struct WalletHomeViewModelTests {
     }
 
     @Test
+    func editingIdentityAfterEmptyPortfolioDoesNotReload() async throws {
+        let original = try makeSavedWallet(name: "Main", color: .blue)
+        let edited = SavedWallet(
+            id: original.id,
+            name: "Renamed",
+            address: original.address,
+            cardColor: .amber,
+            createdAt: original.createdAt
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[], []]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: original)
+        await home.load(wallet: edited)
+
+        #expect(repository.requestedPortfolioAddresses == [original.address])
+        #expect(home.walletCard?.name == "Renamed")
+        #expect(home.walletCard?.cardColor == .amber)
+        #expect(home.tokens.isEmpty)
+    }
+
+    @Test
+    func editingIdentityDuringPortfolioLoadDoesNotReload() async throws {
+        let original = try makeSavedWallet(name: "Main", color: .blue)
+        let edited = SavedWallet(
+            id: original.id,
+            name: "Renamed",
+            address: original.address,
+            cardColor: .amber,
+            createdAt: original.createdAt
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioRequestScripts: [
+                .gated(before: [.refreshing], after: []),
+                .init(events: [])
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        let initialLoad = Task { await home.load(wallet: original) }
+        await repository.waitUntilPortfolioGated()
+        await waitForLoading(home)
+
+        await home.load(wallet: edited)
+        initialLoad.cancel()
+        await initialLoad.value
+        await repository.waitUntilPortfolioTerminated()
+
+        #expect(repository.requestedPortfolioAddresses == [original.address])
+        #expect(home.walletCard?.name == "Renamed")
+        #expect(home.walletCard?.cardColor == .amber)
+    }
+
+    @Test
     func cancelledEmptyPortfolioLoadCanRetrySameWallet() async throws {
         let wallet = try makeSavedWallet(name: "Main", color: .blue)
         let repository = PortfolioTokenRepositorySpy(
@@ -285,6 +341,47 @@ struct WalletHomeViewModelTests {
         #expect(home.walletCard?.id == replacement.id)
         #expect(home.tokens.first?.formattedPrice == "$2,000.00")
         #expect(home.tokenErrorMessage == nil)
+        #expect(repository.terminatedPortfolioRequests.contains(0))
+    }
+
+    @Test
+    func latePortfolioErrorCannotOverwriteNewAddressState() async throws {
+        let original = try makeSavedWallet(name: "Main", color: .blue)
+        let replacement = SavedWallet(
+            name: "Second",
+            address: try EVMAddress(
+                "0x81A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F93"
+            ),
+            cardColor: .teal
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioRequestScripts: [
+                .gated(
+                    before: [.refreshing],
+                    after: [],
+                    error: .remoteFailure
+                ),
+                .init(events: [.fresh(makeRepositoryPortfolio(
+                    address: replacement.address,
+                    price: "2000"
+                ))])
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        let oldLoad = Task { await home.load(wallet: original) }
+        await repository.waitUntilPortfolioGated()
+        await waitForLoading(home)
+
+        await home.load(wallet: replacement)
+        repository.releasePortfolioGate()
+        await oldLoad.value
+        await repository.waitUntilPortfolioTerminated()
+
+        #expect(home.walletCard?.id == replacement.id)
+        #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+        #expect(home.tokenErrorMessage == nil)
+        #expect(!home.isLoadingTokens)
         #expect(repository.terminatedPortfolioRequests.contains(0))
     }
 
