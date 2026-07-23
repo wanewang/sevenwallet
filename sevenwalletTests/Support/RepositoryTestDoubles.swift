@@ -3,6 +3,8 @@ import Foundation
 
 enum RepositoryTestError: Swift.Error, Equatable, Sendable {
     case remoteFailure
+    case storageReadFailure
+    case storageWriteFailure
 }
 
 extension RepositoryTestError: LocalizedError {
@@ -304,6 +306,55 @@ actor WalletStoreSpy: WalletStoreProtocol {
         let request = TransactionRequest(address: value.address, limit: limit, pageKey: pageKey)
         transactionCaches[request] = CachedResource(value: value, fetchedAt: fetchedAt)
         transactionSaveDates[request, default: []].append(fetchedAt)
+    }
+}
+
+actor FailingWalletStore: WalletStoreProtocol {
+    private let readError: RepositoryTestError?
+    private let writeError: RepositoryTestError?
+
+    init(
+        readError: RepositoryTestError? = nil,
+        writeError: RepositoryTestError? = nil
+    ) {
+        self.readError = readError
+        self.writeError = writeError
+    }
+
+    func loadNativeTokens() async throws -> CachedResource<[WalletToken]>? {
+        if let readError { throw readError }
+        return nil
+    }
+
+    func saveNativeTokens(_ value: [WalletToken], fetchedAt: Date) async throws {
+        if let writeError { throw writeError }
+    }
+
+    func loadPortfolio(address: EVMAddress) async throws -> CachedResource<TokenPortfolio>? {
+        if let readError { throw readError }
+        return nil
+    }
+
+    func savePortfolio(_ value: TokenPortfolio, fetchedAt: Date) async throws {
+        if let writeError { throw writeError }
+    }
+
+    func loadTransactionPage(
+        address: EVMAddress,
+        limit: Int,
+        pageKey: String?
+    ) async throws -> CachedResource<TransactionPage>? {
+        if let readError { throw readError }
+        return nil
+    }
+
+    func saveTransactionPage(
+        _ value: TransactionPage,
+        limit: Int,
+        pageKey: String?,
+        fetchedAt: Date
+    ) async throws {
+        if let writeError { throw writeError }
     }
 }
 

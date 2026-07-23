@@ -24,7 +24,12 @@ final class TokenRepository: TokenRepositoryProtocol {
         AsyncThrowingStream { continuation in
             Task { @MainActor in
                 do {
-                    let cached = try await store.loadNativeTokens()
+                    let cached: CachedResource<[WalletToken]>?
+                    do {
+                        cached = try await store.loadNativeTokens()
+                    } catch {
+                        throw RepositoryError.storageReadFailed
+                    }
                     if let cached {
                         continuation.yield(.cached(cached.value))
                     }
@@ -51,7 +56,12 @@ final class TokenRepository: TokenRepositoryProtocol {
         AsyncThrowingStream { continuation in
             Task { @MainActor in
                 do {
-                    let cached = try await store.loadPortfolio(address: address)
+                    let cached: CachedResource<TokenPortfolio>?
+                    do {
+                        cached = try await store.loadPortfolio(address: address)
+                    } catch {
+                        throw RepositoryError.storageReadFailed
+                    }
                     if let cached {
                         continuation.yield(.cached(cached.value))
                     }
@@ -87,7 +97,11 @@ final class TokenRepository: TokenRepositoryProtocol {
 
         let task = Task { @MainActor in
             let value = try await remote.fetchNativeTokens()
-            try await store.saveNativeTokens(value, fetchedAt: dateProvider.now())
+            do {
+                try await store.saveNativeTokens(value, fetchedAt: dateProvider.now())
+            } catch {
+                throw RepositoryError.storageWriteFailed
+            }
             return value
         }
         nativeTask = task
@@ -102,7 +116,11 @@ final class TokenRepository: TokenRepositoryProtocol {
 
         let task = Task { @MainActor in
             let value = try await remote.fetchPortfolio(address: address)
-            try await store.savePortfolio(value, fetchedAt: dateProvider.now())
+            do {
+                try await store.savePortfolio(value, fetchedAt: dateProvider.now())
+            } catch {
+                throw RepositoryError.storageWriteFailed
+            }
             return value
         }
         portfolioTasks[address] = task

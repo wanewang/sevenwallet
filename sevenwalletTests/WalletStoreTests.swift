@@ -31,6 +31,16 @@ struct WalletStoreTests {
         #expect(try await store.loadTransactionPage(address: address, limit: 25, pageKey: "next") == nil)
     }
 
+    @Test func emptyCursorDoesNotShareFirstPageCacheKey() async throws {
+        let store = try makeStore()
+        let address = try testAddress()
+        let page = TransactionPage(address: address, nextPageKey: "next", transfers: [])
+
+        try await store.saveTransactionPage(page, limit: 25, pageKey: nil, fetchedAt: .distantPast)
+
+        #expect(try await store.loadTransactionPage(address: address, limit: 25, pageKey: "") == nil)
+    }
+
     @Test func portfolioSnapshotsRemainIsolatedByAddress() async throws {
         let store = try makeStore()
         let firstAddress = try testAddress()

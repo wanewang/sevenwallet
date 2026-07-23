@@ -32,13 +32,18 @@ actor WalletStore: WalletStoreProtocol {
         var descriptor = FetchDescriptor<NativeTokensCacheRecord>(predicate: #Predicate { $0.key == "native" })
         descriptor.fetchLimit = 1
 
-        if let record = try modelContext.fetch(descriptor).first {
-            record.payload = payload
-            record.fetchedAt = fetchedAt
-        } else {
-            modelContext.insert(NativeTokensCacheRecord(payload: payload, fetchedAt: fetchedAt))
+        do {
+            if let record = try modelContext.fetch(descriptor).first {
+                record.payload = payload
+                record.fetchedAt = fetchedAt
+            } else {
+                modelContext.insert(NativeTokensCacheRecord(payload: payload, fetchedAt: fetchedAt))
+            }
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
         }
-        try modelContext.save()
     }
 
     func loadPortfolio(address: EVMAddress) async throws -> CachedResource<TokenPortfolio>? {
@@ -64,13 +69,18 @@ actor WalletStore: WalletStoreProtocol {
         var descriptor = FetchDescriptor<PortfolioCacheRecord>(predicate: #Predicate { $0.address == normalizedAddress })
         descriptor.fetchLimit = 1
 
-        if let record = try modelContext.fetch(descriptor).first {
-            record.payload = payload
-            record.fetchedAt = fetchedAt
-        } else {
-            modelContext.insert(PortfolioCacheRecord(address: normalizedAddress, payload: payload, fetchedAt: fetchedAt))
+        do {
+            if let record = try modelContext.fetch(descriptor).first {
+                record.payload = payload
+                record.fetchedAt = fetchedAt
+            } else {
+                modelContext.insert(PortfolioCacheRecord(address: normalizedAddress, payload: payload, fetchedAt: fetchedAt))
+            }
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
         }
-        try modelContext.save()
     }
 
     func loadTransactionPage(address: EVMAddress, limit: Int, pageKey: String?) async throws -> CachedResource<TransactionPage>? {
@@ -97,26 +107,33 @@ actor WalletStore: WalletStoreProtocol {
         var descriptor = FetchDescriptor<TransactionPageCacheRecord>(predicate: #Predicate { $0.key == key })
         descriptor.fetchLimit = 1
 
-        if let record = try modelContext.fetch(descriptor).first {
-            record.payload = payload
-            record.fetchedAt = fetchedAt
-        } else {
-            modelContext.insert(
-                TransactionPageCacheRecord(
-                    key: key,
-                    address: address.rawValue,
-                    limit: limit,
-                    pageKey: pageKey,
-                    payload: payload,
-                    fetchedAt: fetchedAt
+        do {
+            if let record = try modelContext.fetch(descriptor).first {
+                record.payload = payload
+                record.fetchedAt = fetchedAt
+            } else {
+                modelContext.insert(
+                    TransactionPageCacheRecord(
+                        key: key,
+                        address: address.rawValue,
+                        limit: limit,
+                        pageKey: pageKey,
+                        payload: payload,
+                        fetchedAt: fetchedAt
+                    )
                 )
-            )
+            }
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
         }
-        try modelContext.save()
     }
 
     private func transactionKey(address: EVMAddress, limit: Int, pageKey: String?) -> String {
-        let cursor = pageKey ?? ""
-        return "\(address.rawValue)|\(limit)|\(cursor.utf8.count):\(cursor)"
+        guard let pageKey else {
+            return "\(address.rawValue)|\(limit)|none"
+        }
+        return "\(address.rawValue)|\(limit)|some:\(pageKey.utf8.count):\(pageKey)"
     }
 }

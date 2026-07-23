@@ -31,11 +31,16 @@ final class TransactionRepository: TransactionRepositoryProtocol {
                     }
 
                     let key = TransactionRequestKey(address: address, limit: limit, pageKey: pageKey)
-                    let cached = try await store.loadTransactionPage(
-                        address: key.address,
-                        limit: key.limit,
-                        pageKey: key.pageKey
-                    )
+                    let cached: CachedResource<TransactionPage>?
+                    do {
+                        cached = try await store.loadTransactionPage(
+                            address: key.address,
+                            limit: key.limit,
+                            pageKey: key.pageKey
+                        )
+                    } catch {
+                        throw RepositoryError.storageReadFailed
+                    }
                     if let cached {
                         continuation.yield(.cached(cached.value))
                     }
@@ -75,12 +80,16 @@ final class TransactionRepository: TransactionRepositoryProtocol {
                 limit: key.limit,
                 pageKey: key.pageKey
             )
-            try await store.saveTransactionPage(
-                value,
-                limit: key.limit,
-                pageKey: key.pageKey,
-                fetchedAt: dateProvider.now()
-            )
+            do {
+                try await store.saveTransactionPage(
+                    value,
+                    limit: key.limit,
+                    pageKey: key.pageKey,
+                    fetchedAt: dateProvider.now()
+                )
+            } catch {
+                throw RepositoryError.storageWriteFailed
+            }
             return value
         }
         tasks[key] = task

@@ -82,6 +82,28 @@ struct TokenRepositoryTests {
         #expect(await store.nativeSaveDates.isEmpty)
     }
 
+    @Test func nativeStorageReadFailureUsesConciseRepositoryError() async throws {
+        let repository = TokenRepository(
+            remote: TokenRemoteDataSourceSpy(),
+            store: FailingWalletStore(readError: .storageReadFailure)
+        )
+
+        await #expect(throws: RepositoryError.storageReadFailed) {
+            try await collect(repository.nativeTokens(policy: .ifExpired))
+        }
+    }
+
+    @Test func nativeStorageWriteFailureUsesConciseRepositoryError() async throws {
+        let repository = TokenRepository(
+            remote: TokenRemoteDataSourceSpy(nativeResult: .success([makeRepositoryToken(price: "2000")])),
+            store: FailingWalletStore(writeError: .storageWriteFailure)
+        )
+
+        await #expect(throws: RepositoryError.storageWriteFailed) {
+            try await collect(repository.nativeTokens(policy: .ifExpired))
+        }
+    }
+
     @Test func stalePortfolioPublishesCacheThenRefreshesForItsAddress() async throws {
         let now = Date(timeIntervalSince1970: 10_000)
         let address = try makeRepositoryAddress()

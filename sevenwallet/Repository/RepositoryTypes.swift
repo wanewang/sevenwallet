@@ -47,8 +47,17 @@ struct TransactionRequestKey: Hashable, Sendable {
 
 enum RepositoryError: Swift.Error, Equatable, LocalizedError {
     case invalidTransactionLimit(Int)
+    case storageReadFailed
+    case storageWriteFailed
 
     nonisolated var errorDescription: String? {
-        "Transaction limit must be between 1 and 100."
+        switch self {
+        case .invalidTransactionLimit:
+            "Transaction limit must be between 1 and 100."
+        case .storageReadFailed:
+            "Unable to read cached wallet data."
+        case .storageWriteFailed:
+            "Unable to save wallet data."
+        }
     }
 }

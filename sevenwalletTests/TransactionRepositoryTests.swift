@@ -132,6 +132,25 @@ struct TransactionRepositoryTests {
         )
     }
 
+    @Test func transactionStorageReadFailureUsesConciseRepositoryError() async throws {
+        let address = try makeRepositoryAddress()
+        let repository = TransactionRepository(
+            remote: TransactionRemoteDataSourceSpy(),
+            store: FailingWalletStore(readError: .storageReadFailure)
+        )
+
+        await #expect(throws: RepositoryError.storageReadFailed) {
+            try await collect(
+                repository.transactions(
+                    address: address,
+                    limit: 25,
+                    pageKey: nil,
+                    policy: .ifExpired
+                )
+            )
+        }
+    }
+
     private func fixedDate(_ date: Date) -> DateProvider {
         DateProvider(now: { date })
     }
