@@ -17,25 +17,39 @@ enum AppDependencies {
     ) -> WalletAppState {
         let schema = Schema(WalletCacheSchema.models)
         let container: ModelContainer
+        let usesFixture = arguments.contains("UI_TEST_FIXTURE")
+        let persistsFixtureWallets = usesFixture &&
+            arguments.contains("UI_TEST_PERSIST_SAVED_WALLETS")
 
         do {
-            let modelConfiguration = ModelConfiguration(
-                schema: schema,
-                isStoredInMemoryOnly: inMemoryStore ||
-                    arguments.contains("UI_TEST_FIXTURE")
-            )
+            let modelConfiguration = persistsFixtureWallets
+                ? ModelConfiguration("UITestWallets", schema: schema)
+                : ModelConfiguration(
+                    schema: schema,
+                    isStoredInMemoryOnly: usesFixture || inMemoryStore
+                )
             container = try ModelContainer(
                 for: schema,
                 configurations: [modelConfiguration]
             )
+            if persistsFixtureWallets {
+                try preparePersistentFixtureStore(
+                    container: container,
+                    arguments: arguments
+                )
+            }
         } catch {
             return unavailableState(message: "Unable to load wallet data.")
         }
 
         let cacheStore = WalletStore(modelContainer: container)
 
-        if arguments.contains("UI_TEST_FIXTURE") {
-            return fixtureState(arguments: arguments, cachePurger: cacheStore)
+        if usesFixture {
+            return fixtureState(
+                arguments: arguments,
+                container: persistsFixtureWallets ? container : nil,
+                cachePurger: cacheStore
+            )
         }
 
         let savedWalletStore = SavedWalletStore(modelContainer: container)
@@ -82,6 +96,7 @@ enum AppDependencies {
 
     private static func fixtureState(
         arguments: [String],
+        container: ModelContainer?,
         cachePurger: any AddressCachePurging
     ) -> WalletAppState {
         let copies = arguments.contains("UI_TEST_LONG_TOKEN_LIST") ? 4 : 1
@@ -98,29 +113,69 @@ enum AppDependencies {
             )
         }
 
-        let wallet = arguments.contains("UI_TEST_POPULATED_WALLET")
-            ? SavedWallet(
-                id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
-                name: "Main Wallet",
-                address: try! EVMAddress(
-                    "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
-                ),
-                cardColor: .blue,
-                createdAt: Date(timeIntervalSince1970: 0)
+        let savedWalletStore: any SavedWalletStoreProtocol
+        if let container {
+            savedWalletStore = SavedWalletStore(modelContainer: container)
+        } else {
+            let wallet = arguments.contains("UI_TEST_POPULATED_WALLET")
+                ? SavedWallet(
+                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                    name: "Main Wallet",
+                    address: try! EVMAddress(
+                        "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
+                    ),
+                    cardColor: .blue,
+                    createdAt: Date(timeIntervalSince1970: 0)
+                )
+                : nil
+            savedWalletStore = FixtureSavedWalletStore(
+                snapshot: SavedWalletSnapshot(
+                    wallets: wallet.map { [$0] } ?? [],
+                    selectedWalletID: wallet?.id
+                )
             )
-            : nil
-        let snapshot = SavedWalletSnapshot(
-            wallets: wallet.map { [$0] } ?? [],
-            selectedWalletID: wallet?.id
-        )
+        }
         let session = WalletSession(
-            store: FixtureSavedWalletStore(snapshot: snapshot),
+            store: savedWalletStore,
             cachePurger: cachePurger
         )
         return WalletAppState(
             session: session,
             homeViewModel: WalletHomeViewModel(tokenRepository: repository)
         )
+    }
+
+    private static func preparePersistentFixtureStore(
+        container: ModelContainer,
+        arguments: [String]
+    ) throws {
+        let context = ModelContext(container)
+
+        if arguments.contains("UI_TEST_CLEAR_SAVED_WALLETS") {
+            try context.fetch(FetchDescriptor<SavedWalletRecord>())
+                .forEach(context.delete)
+            try context.fetch(FetchDescriptor<WalletSelectionRecord>())
+                .forEach(context.delete)
+            try context.save()
+        }
+
+        guard arguments.contains("UI_TEST_SEED_SAVED_WALLET") else { return }
+        var walletDescriptor = FetchDescriptor<SavedWalletRecord>()
+        walletDescriptor.fetchLimit = 1
+        guard try context.fetch(walletDescriptor).isEmpty else { return }
+
+        try context.fetch(FetchDescriptor<WalletSelectionRecord>())
+            .forEach(context.delete)
+        let wallet = SavedWallet(
+            name: "Main Wallet",
+            address: try EVMAddress(
+                "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
+            ),
+            cardColor: .blue
+        )
+        context.insert(SavedWalletRecord(wallet: wallet))
+        context.insert(WalletSelectionRecord(walletID: wallet.id))
+        try context.save()
     }
 
     private static func unavailableState(message: String) -> WalletAppState {

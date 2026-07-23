@@ -61,6 +61,35 @@ struct WalletHomeViewModelTests {
     }
 
     @Test
+    func persistentFixtureSeedsSurvivesRelaunchAndClears() async {
+        let seeded = await loadFixtureWallet(arguments: [
+            "UI_TEST_FIXTURE",
+            "UI_TEST_PERSIST_SAVED_WALLETS",
+            "UI_TEST_CLEAR_SAVED_WALLETS",
+            "UI_TEST_SEED_SAVED_WALLET"
+        ])
+        #expect(seeded?.name == "Main Wallet")
+        #expect(
+            seeded?.address.rawValue ==
+                "0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92"
+        )
+        #expect(seeded?.cardColor == .blue)
+
+        let relaunched = await loadFixtureWallet(arguments: [
+            "UI_TEST_FIXTURE",
+            "UI_TEST_PERSIST_SAVED_WALLETS"
+        ])
+        #expect(relaunched?.id == seeded?.id)
+
+        let cleared = await loadFixtureWallet(arguments: [
+            "UI_TEST_FIXTURE",
+            "UI_TEST_PERSIST_SAVED_WALLETS",
+            "UI_TEST_CLEAR_SAVED_WALLETS"
+        ])
+        #expect(cleared == nil)
+    }
+
+    @Test
     func fixtureSupportsTokenFailure() async {
         let state = AppDependencies.makeAppState(
             arguments: ["UI_TEST_FIXTURE", "UI_TEST_TOKEN_ERROR"],
@@ -96,6 +125,16 @@ struct WalletHomeViewModelTests {
         #expect(!home.isLoadingTokens)
         #expect(home.tokens.isEmpty)
         #expect(home.tokenErrorMessage == nil)
+    }
+
+    private func loadFixtureWallet(arguments: [String]) async -> SavedWallet? {
+        let state = AppDependencies.makeAppState(
+            arguments: arguments,
+            environment: [:],
+            infoDictionary: [:]
+        )
+        await state.session.load()
+        return state.session.selectedWallet
     }
 
     @Test
