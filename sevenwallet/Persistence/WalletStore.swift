@@ -17,7 +17,7 @@ protocol WalletStoreProtocol: Sendable {
 
 @ModelActor
 actor WalletStore: WalletStoreProtocol {
-    func loadNativeTokens() throws -> CachedResource<[WalletToken]>? {
+    func loadNativeTokens() async throws -> CachedResource<[WalletToken]>? {
         var descriptor = FetchDescriptor<NativeTokensCacheRecord>(predicate: #Predicate { $0.key == "native" })
         descriptor.fetchLimit = 1
         guard let record = try modelContext.fetch(descriptor).first else { return nil }
