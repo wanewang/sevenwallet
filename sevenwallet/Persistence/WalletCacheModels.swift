@@ -49,6 +49,8 @@ enum WalletCacheSchema {
     static let models: [any PersistentModel.Type] = [
         NativeTokensCacheRecord.self,
         PortfolioCacheRecord.self,
-        TransactionPageCacheRecord.self
+        TransactionPageCacheRecord.self,
+        SavedWalletRecord.self,
+        WalletSelectionRecord.self
     ]
 }
