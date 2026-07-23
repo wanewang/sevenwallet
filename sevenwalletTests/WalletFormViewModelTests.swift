@@ -56,6 +56,30 @@ struct WalletFormViewModelTests {
         #expect(!form.isSubmitting)
     }
 
+    @Test func failedEditSavePreservesInputAndShowsError() async throws {
+        let wallet = try makeWallet(name: "Main", cardColor: .blue)
+        let store = ScriptedSavedWalletStore(
+            snapshot: .init(wallets: [wallet], selectedWalletID: wallet.id)
+        )
+        let session = WalletSession(
+            store: store,
+            cachePurger: RecordingAddressCachePurger()
+        )
+        await session.load()
+        let form = WalletFormViewModel(mode: .edit(wallet))
+        form.setName("Renamed")
+        form.selectedColor = .pink
+        await store.setError(RepositoryTestError.storageWriteFailure)
+
+        #expect(await form.submit(session: session) == false)
+        #expect(form.name == "Renamed")
+        #expect(form.selectedColor == .pink)
+        #expect(form.address == wallet.address.rawValue)
+        #expect(form.submissionError == "Unable to save wallet.")
+        #expect(!form.isSubmitting)
+        #expect(session.selectedWallet == wallet)
+    }
+
     @Test func addNormalizesNameAndAddressBeforeSaving() async throws {
         let store = ScriptedSavedWalletStore()
         let session = WalletSession(
