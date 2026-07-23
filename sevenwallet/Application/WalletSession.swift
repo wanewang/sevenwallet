@@ -11,13 +11,17 @@ final class WalletSession {
 
     private let store: any SavedWalletStoreProtocol
     private let cachePurger: any AddressCachePurging
+    private let portfolioLoadCanceller: any PortfolioLoadCancelling
 
     init(
         store: any SavedWalletStoreProtocol,
-        cachePurger: any AddressCachePurging
+        cachePurger: any AddressCachePurging,
+        portfolioLoadCanceller: any PortfolioLoadCancelling =
+            NoopPortfolioLoadCanceller()
     ) {
         self.store = store
         self.cachePurger = cachePurger
+        self.portfolioLoadCanceller = portfolioLoadCanceller
     }
 
     func load() async {
@@ -60,6 +64,7 @@ final class WalletSession {
         guard let wallet = wallets.first(where: { $0.id == id }) else {
             throw SavedWalletStoreError.walletNotFound
         }
+        await portfolioLoadCanceller.cancelPortfolioLoad(address: wallet.address)
         try await cachePurger.purgeAddressData(address: wallet.address)
         apply(try await store.delete(id: id))
     }

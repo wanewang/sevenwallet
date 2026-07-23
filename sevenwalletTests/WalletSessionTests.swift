@@ -120,6 +120,32 @@ struct WalletSessionTests {
         #expect(session.selectedWallet == nil)
     }
 
+    @Test func deleteSettlesPortfolioBeforePurgeAndIdentityDeletion() async throws {
+        let recorder = WalletSessionCallRecorder()
+        let wallet = try makeWallet(name: "Main")
+        let store = ScriptedSavedWalletStore(
+            snapshot: .init(wallets: [wallet], selectedWalletID: wallet.id),
+            recorder: recorder
+        )
+        let session = WalletSession(
+            store: store,
+            cachePurger: RecordingAddressCachePurger(recorder: recorder),
+            portfolioLoadCanceller: RecordingPortfolioLoadCanceller(
+                recorder: recorder
+            )
+        )
+        await session.load()
+
+        try await session.delete(id: wallet.id)
+
+        #expect(await recorder.calls == [
+            .load,
+            .cancelPortfolio(wallet.address),
+            .purge(wallet.address),
+            .delete(wallet.id)
+        ])
+    }
+
     @Test func purgeFailureStopsDeletionAndRetainsPublishedSnapshot() async throws {
         let recorder = WalletSessionCallRecorder()
         let wallet = try makeWallet(name: "Main")

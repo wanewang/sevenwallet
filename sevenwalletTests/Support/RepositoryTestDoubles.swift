@@ -15,6 +15,7 @@ extension RepositoryTestError: LocalizedError {
 
 enum WalletSessionDependencyCall: Equatable, Sendable {
     case load
+    case cancelPortfolio(EVMAddress)
     case purge(EVMAddress)
     case delete(UUID)
 }
@@ -113,6 +114,18 @@ actor RecordingAddressCachePurger: AddressCachePurging {
 
     func setError(_ error: (any Error & Sendable)?) {
         self.error = error
+    }
+}
+
+actor RecordingPortfolioLoadCanceller: PortfolioLoadCancelling {
+    private let recorder: WalletSessionCallRecorder?
+
+    init(recorder: WalletSessionCallRecorder? = nil) {
+        self.recorder = recorder
+    }
+
+    func cancelPortfolioLoad(address: EVMAddress) async {
+        await recorder?.record(.cancelPortfolio(address))
     }
 }
 
@@ -458,6 +471,9 @@ actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
     private let gatedPortfolioAddresses: Set<EVMAddress>
     private var nativeContinuations: [CheckedContinuation<[WalletToken], Swift.Error>] = []
     private var portfolioContinuations: [EVMAddress: [CheckedContinuation<TokenPortfolio, Swift.Error>]] = [:]
+    private var portfolioRequestWaiters: [EVMAddress: [CheckedContinuation<Void, Never>]] = [:]
+    private var cancelledPortfolioAddresses: Set<EVMAddress> = []
+    private var portfolioCancellationWaiters: [EVMAddress: [CheckedContinuation<Void, Never>]] = [:]
 
     private(set) var nativeCallCount = 0
     private(set) var portfolioCallCounts: [EVMAddress: Int] = [:]
@@ -484,11 +500,31 @@ actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
 
     func fetchPortfolio(address: EVMAddress) async throws -> TokenPortfolio {
         portfolioCallCounts[address, default: 0] += 1
+        let requestWaiters = portfolioRequestWaiters.removeValue(forKey: address) ?? []
+        requestWaiters.forEach { $0.resume() }
         guard gatedPortfolioAddresses.contains(address) else {
             return try result(for: address).get()
         }
-        return try await withCheckedThrowingContinuation { continuation in
-            portfolioContinuations[address, default: []].append(continuation)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                portfolioContinuations[address, default: []].append(continuation)
+            }
+        } onCancel: {
+            Task { await self.recordPortfolioCancellation(address: address) }
+        }
+    }
+
+    func waitUntilPortfolioRequested(address: EVMAddress) async {
+        guard portfolioCallCounts[address, default: 0] == 0 else { return }
+        await withCheckedContinuation { continuation in
+            portfolioRequestWaiters[address, default: []].append(continuation)
+        }
+    }
+
+    func waitUntilPortfolioCancelled(address: EVMAddress) async {
+        guard !cancelledPortfolioAddresses.contains(address) else { return }
+        await withCheckedContinuation { continuation in
+            portfolioCancellationWaiters[address, default: []].append(continuation)
         }
     }
 
@@ -506,6 +542,12 @@ actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
 
     private func result(for address: EVMAddress) -> Result<TokenPortfolio, RepositoryTestError> {
         portfolioResults[address] ?? .failure(.remoteFailure)
+    }
+
+    private func recordPortfolioCancellation(address: EVMAddress) {
+        cancelledPortfolioAddresses.insert(address)
+        let waiters = portfolioCancellationWaiters.removeValue(forKey: address) ?? []
+        waiters.forEach { $0.resume() }
     }
 }
 
@@ -548,10 +590,18 @@ actor TransactionRemoteDataSourceSpy: TransactionRemoteDataSourceProtocol {
     }
 }
 
-actor WalletStoreSpy: WalletStoreProtocol {
+actor WalletStoreSpy: WalletStoreProtocol, AddressCachePurging {
     private var nativeCache: CachedResource<[WalletToken]>?
     private var portfolioCaches: [EVMAddress: CachedResource<TokenPortfolio>]
     private var transactionCaches: [TransactionRequest: CachedResource<TransactionPage>]
+    private let gatedPortfolioSaveAddresses: Set<EVMAddress>
+    private var portfolioSaveContinuations: [
+        EVMAddress: [CheckedContinuation<Void, Never>]
+    ] = [:]
+    private var portfolioSaveWaiters: [
+        EVMAddress: [CheckedContinuation<Void, Never>]
+    ] = [:]
+    private var startedPortfolioSaves: Set<EVMAddress> = []
 
     private(set) var nativeSaveDates: [Date] = []
     private(set) var portfolioSaveDates: [EVMAddress: [Date]] = [:]
@@ -561,11 +611,13 @@ actor WalletStoreSpy: WalletStoreProtocol {
     init(
         nativeCache: CachedResource<[WalletToken]>? = nil,
         portfolioCaches: [EVMAddress: CachedResource<TokenPortfolio>] = [:],
-        transactionCaches: [TransactionRequest: CachedResource<TransactionPage>] = [:]
+        transactionCaches: [TransactionRequest: CachedResource<TransactionPage>] = [:],
+        gatedPortfolioSaveAddresses: Set<EVMAddress> = []
     ) {
         self.nativeCache = nativeCache
         self.portfolioCaches = portfolioCaches
         self.transactionCaches = transactionCaches
+        self.gatedPortfolioSaveAddresses = gatedPortfolioSaveAddresses
     }
 
     func loadNativeTokens() async throws -> CachedResource<[WalletToken]>? {
@@ -582,8 +634,38 @@ actor WalletStoreSpy: WalletStoreProtocol {
     }
 
     func savePortfolio(_ value: TokenPortfolio, fetchedAt: Date) async throws {
+        if gatedPortfolioSaveAddresses.contains(value.address) {
+            startedPortfolioSaves.insert(value.address)
+            let waiters = portfolioSaveWaiters.removeValue(
+                forKey: value.address
+            ) ?? []
+            waiters.forEach { $0.resume() }
+            await withCheckedContinuation { continuation in
+                portfolioSaveContinuations[value.address, default: []].append(
+                    continuation
+                )
+            }
+        }
         portfolioCaches[value.address] = CachedResource(value: value, fetchedAt: fetchedAt)
         portfolioSaveDates[value.address, default: []].append(fetchedAt)
+    }
+
+    func waitUntilPortfolioSaveStarted(address: EVMAddress) async {
+        guard !startedPortfolioSaves.contains(address) else { return }
+        await withCheckedContinuation { continuation in
+            portfolioSaveWaiters[address, default: []].append(continuation)
+        }
+    }
+
+    func releasePortfolioSave(address: EVMAddress) {
+        let continuations = portfolioSaveContinuations.removeValue(
+            forKey: address
+        ) ?? []
+        continuations.forEach { $0.resume() }
+    }
+
+    func purgeAddressData(address: EVMAddress) async throws {
+        portfolioCaches[address] = nil
     }
 
     func loadTransactionPage(

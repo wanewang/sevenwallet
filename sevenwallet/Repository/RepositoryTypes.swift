@@ -30,6 +30,14 @@ protocol TokenRepositoryProtocol: Sendable {
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error>
 }
 
+protocol PortfolioLoadCancelling: Sendable {
+    func cancelPortfolioLoad(address: EVMAddress) async
+}
+
+nonisolated struct NoopPortfolioLoadCanceller: PortfolioLoadCancelling {
+    func cancelPortfolioLoad(address: EVMAddress) async {}
+}
+
 protocol TransactionRepositoryProtocol: Sendable {
     func transactions(
         address: EVMAddress,

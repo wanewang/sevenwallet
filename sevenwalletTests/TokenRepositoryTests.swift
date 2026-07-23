@@ -219,6 +219,70 @@ struct TokenRepositoryTests {
         #expect(try await second.next() == .fresh(secondFresh))
     }
 
+    @Test func cancelledDelayedPortfolioRefreshCannotSaveAfterPurge() async throws {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let address = try makeRepositoryAddress()
+        let fresh = makeRepositoryPortfolio(address: address, price: "2000")
+        let store = WalletStoreSpy()
+        let remote = TokenRemoteDataSourceSpy(
+            portfolioResults: [address: .success(fresh)],
+            gatedPortfolioAddresses: [address]
+        )
+        let repository = TokenRepository(
+            remote: remote,
+            store: store,
+            dateProvider: fixedDate(now)
+        )
+        var iterator = repository
+            .portfolio(address: address, policy: .force)
+            .makeAsyncIterator()
+
+        #expect(try await iterator.next() == .refreshing)
+        await remote.waitUntilPortfolioRequested(address: address)
+
+        let cancellation = Task {
+            await repository.cancelPortfolioLoad(address: address)
+        }
+        await remote.waitUntilPortfolioCancelled(address: address)
+        try await store.purgeAddressData(address: address)
+        await remote.releasePortfolioRequest(address: address)
+        await cancellation.value
+
+        #expect(try await iterator.next() == nil)
+        #expect(try await store.loadPortfolio(address: address) == nil)
+        #expect(await store.portfolioSaveDates[address] == nil)
+    }
+
+    @Test func cancellationDuringPortfolioSaveSuppressesFreshPublication() async throws {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let address = try makeRepositoryAddress()
+        let fresh = makeRepositoryPortfolio(address: address, price: "2000")
+        let store = WalletStoreSpy(gatedPortfolioSaveAddresses: [address])
+        let remote = TokenRemoteDataSourceSpy(
+            portfolioResults: [address: .success(fresh)]
+        )
+        let repository = TokenRepository(
+            remote: remote,
+            store: store,
+            dateProvider: fixedDate(now)
+        )
+        var iterator = repository
+            .portfolio(address: address, policy: .force)
+            .makeAsyncIterator()
+
+        #expect(try await iterator.next() == .refreshing)
+        await store.waitUntilPortfolioSaveStarted(address: address)
+
+        let cancellation = Task {
+            await repository.cancelPortfolioLoad(address: address)
+        }
+        await Task.yield()
+        await store.releasePortfolioSave(address: address)
+        await cancellation.value
+
+        #expect(try await iterator.next() == nil)
+    }
+
     private func fixedDate(_ date: Date) -> DateProvider {
         DateProvider(now: { date })
     }

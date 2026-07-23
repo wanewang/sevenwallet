@@ -151,7 +151,12 @@ struct WalletHomeViewModelTests {
         )
         let home = WalletHomeViewModel(tokenRepository: repository)
 
-        await home.load(wallet: nil)
+        home.updateWallet(nil)
+
+        #expect(repository.requestedNativePolicies.isEmpty)
+        #expect(home.tokens.isEmpty)
+
+        await home.loadSelectedResource()
 
         #expect(repository.requestedNativePolicies == [.ifExpired])
         #expect(repository.requestedPortfolioAddresses.isEmpty)
@@ -224,24 +229,83 @@ struct WalletHomeViewModelTests {
         )
         let repository = PortfolioTokenRepositorySpy(
             portfolioRequestScripts: [
-                .gated(before: [.refreshing], after: []),
-                .init(events: [])
+                .gated(
+                    before: [.refreshing],
+                    after: [.fresh(makeRepositoryPortfolio(
+                        address: original.address,
+                        price: "2000"
+                    ))]
+                )
             ]
         )
         let home = WalletHomeViewModel(tokenRepository: repository)
 
-        let initialLoad = Task { await home.load(wallet: original) }
+        home.updateWallet(original)
+        let initialLoad = Task { await home.loadSelectedResource() }
         await repository.waitUntilPortfolioGated()
         await waitForLoading(home)
 
-        await home.load(wallet: edited)
-        initialLoad.cancel()
+        home.updateWallet(edited)
+        repository.releasePortfolioGate()
         await initialLoad.value
-        await repository.waitUntilPortfolioTerminated()
 
         #expect(repository.requestedPortfolioAddresses == [original.address])
         #expect(home.walletCard?.name == "Renamed")
         #expect(home.walletCard?.cardColor == .amber)
+        #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+        #expect(!home.isLoadingTokens)
+        #expect(home.tokenErrorMessage == nil)
+    }
+
+    @Test
+    func unresolvedWalletPersistenceBlocksManualNativeLoads() async {
+        let repository = PortfolioTokenRepositorySpy(
+            nativeScripts: [[], []]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        home.updateLoadingEligibility(false)
+        await home.refreshTokens()
+        await home.retryTokens()
+
+        #expect(repository.requestedNativePolicies.isEmpty)
+    }
+
+    @Test
+    func resolvedRetryCanReplaceCancelledLoadBeforeCleanup() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .blue)
+        let fresh = makeRepositoryPortfolio(
+            address: wallet.address,
+            price: "2000"
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioRequestScripts: [
+                .gated(before: [.refreshing], after: []),
+                .init(events: [.fresh(fresh)])
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        home.updateWallet(wallet)
+        let initialLoad = Task { await home.loadSelectedResource() }
+        await repository.waitUntilPortfolioGated()
+        await waitForLoading(home)
+
+        home.updateLoadingEligibility(false)
+        initialLoad.cancel()
+        home.updateLoadingEligibility(true)
+        let replacement = Task { await home.loadSelectedResource() }
+
+        await replacement.value
+        await initialLoad.value
+
+        #expect(repository.requestedPortfolioAddresses == [
+            wallet.address,
+            wallet.address
+        ])
+        #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+        #expect(!home.isLoadingTokens)
+        #expect(home.tokenErrorMessage == nil)
     }
 
     @Test

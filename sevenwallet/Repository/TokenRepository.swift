@@ -1,12 +1,13 @@
 import Foundation
 
 @MainActor
-final class TokenRepository: TokenRepositoryProtocol {
+final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadCancelling {
     private let remote: any TokenRemoteDataSourceProtocol
     private let store: any WalletStoreProtocol
     private let dateProvider: DateProvider
     private var nativeTask: Task<[WalletToken], Swift.Error>?
     private var portfolioTasks: [EVMAddress: Task<TokenPortfolio, Swift.Error>] = [:]
+    private var portfolioGenerations: [EVMAddress: Int] = [:]
 
     init(
         remote: any TokenRemoteDataSourceProtocol,
@@ -56,7 +57,11 @@ final class TokenRepository: TokenRepositoryProtocol {
         address: EVMAddress,
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error> {
-        AsyncThrowingStream { continuation in
+        let generation = portfolioGenerations[address, default: 0]
+        return AsyncThrowingStream<
+            RepositoryLoadEvent<TokenPortfolio>,
+            Swift.Error
+        > { continuation in
             let task = Task { @MainActor in
                 do {
                     let cached: CachedResource<TokenPortfolio>?
@@ -65,6 +70,9 @@ final class TokenRepository: TokenRepositoryProtocol {
                     } catch {
                         throw RepositoryError.storageReadFailed
                     }
+                    guard generation == portfolioGenerations[address, default: 0] else {
+                        throw CancellationError()
+                    }
                     if let cached {
                         continuation.yield(.cached(cached.value))
                     }
@@ -72,19 +80,36 @@ final class TokenRepository: TokenRepositoryProtocol {
                         continuation.finish()
                         return
                     }
+                    guard generation == portfolioGenerations[address, default: 0] else {
+                        throw CancellationError()
+                    }
 
                     continuation.yield(.refreshing)
                     let value = try await refreshPortfolio(address: address)
+                    guard generation == portfolioGenerations[address, default: 0] else {
+                        throw CancellationError()
+                    }
                     continuation.yield(.fresh(value))
                     continuation.finish()
                 } catch is CancellationError {
                     continuation.finish()
                 } catch {
-                    continuation.finish(throwing: error)
+                    if generation == portfolioGenerations[address, default: 0] {
+                        continuation.finish(throwing: error)
+                    } else {
+                        continuation.finish()
+                    }
                 }
             }
             continuation.onTermination = { @Sendable _ in task.cancel() }
         }
+    }
+
+    func cancelPortfolioLoad(address: EVMAddress) async {
+        portfolioGenerations[address, default: 0] += 1
+        guard let task = portfolioTasks[address] else { return }
+        task.cancel()
+        _ = await task.result
     }
 
     private func shouldRefresh<Value: Sendable>(
@@ -122,11 +147,13 @@ final class TokenRepository: TokenRepositoryProtocol {
 
         let task = Task { @MainActor in
             let value = try await remote.fetchPortfolio(address: address)
+            try Task.checkCancellation()
             do {
                 try await store.savePortfolio(value, fetchedAt: dateProvider.now())
             } catch {
                 throw RepositoryError.storageWriteFailed
             }
+            try Task.checkCancellation()
             return value
         }
         portfolioTasks[address] = task

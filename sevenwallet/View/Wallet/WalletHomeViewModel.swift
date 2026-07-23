@@ -17,6 +17,7 @@ final class WalletHomeViewModel {
     private var resourceState = ResourceState.idle
     private var refreshCoordinator = PullRefreshCoordinator()
     private var requestGeneration = 0
+    private var isLoadingEligible = true
 
     init(
         isThemeLight: Bool = false,
@@ -56,30 +57,53 @@ final class WalletHomeViewModel {
     }
 
     func loadTokens() async {
+        guard isLoadingEligible else { return }
         await consume(policy: .ifExpired)
     }
 
     func load(wallet: SavedWallet?) async {
+        updateWallet(wallet)
+        await loadSelectedResource()
+    }
+
+    func updateWallet(_ wallet: SavedWallet?) {
         let addressChanged = selectedWallet?.address != wallet?.address
         selectedWallet = wallet
         compatibilityWallet = nil
 
         if addressChanged {
+            requestGeneration += 1
             tokens = []
+            isLoadingTokens = false
+            tokenErrorMessage = nil
             resourceState = .idle
         }
         rebuildWalletCard()
+    }
 
-        guard resourceState == .idle else { return }
+    func loadSelectedResource() async {
+        guard isLoadingEligible, resourceState == .idle else { return }
         await consume(policy: .ifExpired)
     }
 
     func refreshTokens() async {
+        guard isLoadingEligible else { return }
         await consume(policy: refreshCoordinator.recordPull(at: dateProvider.now()))
     }
 
     func retryTokens() async {
+        guard isLoadingEligible else { return }
         await consume(policy: .ifExpired)
+    }
+
+    func updateLoadingEligibility(_ isEligible: Bool) {
+        guard isLoadingEligible != isEligible else { return }
+        isLoadingEligible = isEligible
+        guard !isEligible else { return }
+
+        requestGeneration += 1
+        isLoadingTokens = false
+        resourceState = .idle
     }
 
     static func sample(tokenSetCopies: Int = 1) -> WalletHomeViewModel {

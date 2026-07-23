@@ -103,14 +103,30 @@ struct WalletHomeView: View {
                 }
             }
         }
-        .task(id: wallet) {
-            await viewModel.load(wallet: wallet)
+        .onChange(of: wallet, initial: true) { _, wallet in
+            viewModel.updateWallet(wallet)
+        }
+        .onChange(of: walletLoadKey.canLoad, initial: true) { _, canLoad in
+            viewModel.updateLoadingEligibility(canLoad)
+        }
+        .task(id: walletLoadKey) {
+            viewModel.updateLoadingEligibility(walletLoadKey.canLoad)
+            guard walletLoadKey.canLoad else { return }
+            viewModel.updateWallet(wallet)
+            await viewModel.loadSelectedResource()
         }
         .toolbar(.hidden, for: .navigationBar)
         .tint(Theme.accent)
         .environment(
             \.colorScheme,
             viewModel.isThemeLight ? .light : .dark
+        )
+    }
+
+    private var walletLoadKey: WalletLoadKey {
+        WalletLoadKey(
+            canLoad: hasResolvedWallets && walletLoadError == nil,
+            address: wallet?.address
         )
     }
 
@@ -197,4 +213,9 @@ struct WalletHomeView: View {
             .padding(.bottom, 8)
             .accessibilityIdentifier("token-error-message")
     }
+}
+
+private struct WalletLoadKey: Hashable {
+    let canLoad: Bool
+    let address: EVMAddress?
 }
