@@ -1,22 +1,31 @@
 import Foundation
 
 @MainActor
-final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadCancelling {
+final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
+    private struct PortfolioTaskEntry {
+        let id: UUID
+        let task: Task<TokenPortfolio, Swift.Error>
+    }
+
     private let remote: any TokenRemoteDataSourceProtocol
     private let store: any WalletStoreProtocol
     private let dateProvider: DateProvider
+    private let beforePortfolioTaskCleanup: ((EVMAddress) async -> Void)?
     private var nativeTask: Task<[WalletToken], Swift.Error>?
-    private var portfolioTasks: [EVMAddress: Task<TokenPortfolio, Swift.Error>] = [:]
+    private var portfolioTasks: [EVMAddress: PortfolioTaskEntry] = [:]
     private var portfolioGenerations: [EVMAddress: Int] = [:]
+    private var suspendedPortfolioAddresses: Set<EVMAddress> = []
 
     init(
         remote: any TokenRemoteDataSourceProtocol,
         store: any WalletStoreProtocol,
-        dateProvider: DateProvider = .system
+        dateProvider: DateProvider = .system,
+        beforePortfolioTaskCleanup: ((EVMAddress) async -> Void)? = nil
     ) {
         self.remote = remote
         self.store = store
         self.dateProvider = dateProvider
+        self.beforePortfolioTaskCleanup = beforePortfolioTaskCleanup
     }
 
     func nativeTokens(
@@ -57,6 +66,9 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadCancelling {
         address: EVMAddress,
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error> {
+        guard !suspendedPortfolioAddresses.contains(address) else {
+            return AsyncThrowingStream { $0.finish() }
+        }
         let generation = portfolioGenerations[address, default: 0]
         return AsyncThrowingStream<
             RepositoryLoadEvent<TokenPortfolio>,
@@ -64,6 +76,10 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadCancelling {
         > { continuation in
             let task = Task { @MainActor in
                 do {
+                    guard !suspendedPortfolioAddresses.contains(address),
+                          generation == portfolioGenerations[address, default: 0] else {
+                        throw CancellationError()
+                    }
                     let cached: CachedResource<TokenPortfolio>?
                     do {
                         cached = try await store.loadPortfolio(address: address)
@@ -105,11 +121,17 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadCancelling {
         }
     }
 
-    func cancelPortfolioLoad(address: EVMAddress) async {
+    func suspendPortfolioLoads(address: EVMAddress) async {
+        suspendedPortfolioAddresses.insert(address)
         portfolioGenerations[address, default: 0] += 1
-        guard let task = portfolioTasks[address] else { return }
-        task.cancel()
-        _ = await task.result
+        guard let entry = portfolioTasks[address] else { return }
+        entry.task.cancel()
+        _ = await entry.task.result
+        removePortfolioTask(address: address, id: entry.id)
+    }
+
+    func resumePortfolioLoads(address: EVMAddress) async {
+        suspendedPortfolioAddresses.remove(address)
     }
 
     private func shouldRefresh<Value: Sendable>(
@@ -141,10 +163,11 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadCancelling {
     }
 
     private func refreshPortfolio(address: EVMAddress) async throws -> TokenPortfolio {
-        if let task = portfolioTasks[address] {
-            return try await task.value
+        if let entry = portfolioTasks[address] {
+            return try await entry.task.value
         }
 
+        let id = UUID()
         let task = Task { @MainActor in
             let value = try await remote.fetchPortfolio(address: address)
             try Task.checkCancellation()
@@ -156,8 +179,21 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadCancelling {
             try Task.checkCancellation()
             return value
         }
-        portfolioTasks[address] = task
-        defer { portfolioTasks[address] = nil }
-        return try await task.value
+        portfolioTasks[address] = PortfolioTaskEntry(id: id, task: task)
+        let result = await task.result
+        if let beforePortfolioTaskCleanup {
+            await beforePortfolioTaskCleanup(address)
+        }
+        removePortfolioTask(address: address, id: id)
+        return try result.get()
+    }
+
+    func hasActivePortfolioTask(address: EVMAddress) -> Bool {
+        portfolioTasks[address] != nil
+    }
+
+    private func removePortfolioTask(address: EVMAddress, id: UUID) {
+        guard portfolioTasks[address]?.id == id else { return }
+        portfolioTasks[address] = nil
     }
 }

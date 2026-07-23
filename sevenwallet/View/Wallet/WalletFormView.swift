@@ -76,6 +76,7 @@ struct WalletFormView: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
+            .disabled(viewModel.isSubmitting)
             .accessibilityLabel("Back")
 
             Text(viewModel.title)

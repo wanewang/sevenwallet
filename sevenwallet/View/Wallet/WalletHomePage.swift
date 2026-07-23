@@ -6,6 +6,7 @@ struct WalletHomeView: View {
     let wallet: SavedWallet?
     let walletLoadError: String?
     let hasResolvedWallets: Bool
+    let isWalletDeletionInProgress: Bool
     let onRetryWallets: () -> Void
     let onAddWallet: () -> Void
     let onEditWallet: (UUID) -> Void
@@ -15,6 +16,7 @@ struct WalletHomeView: View {
         wallet: SavedWallet? = nil,
         walletLoadError: String? = nil,
         hasResolvedWallets: Bool = true,
+        isWalletDeletionInProgress: Bool = false,
         onRetryWallets: @escaping () -> Void = {},
         onAddWallet: @escaping () -> Void = {},
         onEditWallet: @escaping (UUID) -> Void = { _ in }
@@ -23,6 +25,7 @@ struct WalletHomeView: View {
         self.wallet = wallet
         self.walletLoadError = walletLoadError
         self.hasResolvedWallets = hasResolvedWallets
+        self.isWalletDeletionInProgress = isWalletDeletionInProgress
         self.onRetryWallets = onRetryWallets
         self.onAddWallet = onAddWallet
         self.onEditWallet = onEditWallet
@@ -125,7 +128,9 @@ struct WalletHomeView: View {
 
     private var walletLoadKey: WalletLoadKey {
         WalletLoadKey(
-            canLoad: hasResolvedWallets && walletLoadError == nil,
+            canLoad: hasResolvedWallets
+                && walletLoadError == nil
+                && !isWalletDeletionInProgress,
             address: wallet?.address
         )
     }

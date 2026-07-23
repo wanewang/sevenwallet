@@ -241,7 +241,7 @@ struct TokenRepositoryTests {
         await remote.waitUntilPortfolioRequested(address: address)
 
         let cancellation = Task {
-            await repository.cancelPortfolioLoad(address: address)
+            await repository.suspendPortfolioLoads(address: address)
         }
         await remote.waitUntilPortfolioCancelled(address: address)
         try await store.purgeAddressData(address: address)
@@ -274,16 +274,129 @@ struct TokenRepositoryTests {
         await store.waitUntilPortfolioSaveStarted(address: address)
 
         let cancellation = Task {
-            await repository.cancelPortfolioLoad(address: address)
+            await repository.suspendPortfolioLoads(address: address)
         }
-        await Task.yield()
+        await store.waitUntilPortfolioSaveCancelled(address: address)
         await store.releasePortfolioSave(address: address)
         await cancellation.value
 
         #expect(try await iterator.next() == nil)
     }
 
+    @Test func suspendedAddressRejectsPortfolioUntilResumed() async throws {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let address = try makeRepositoryAddress()
+        let fresh = makeRepositoryPortfolio(address: address, price: "2000")
+        let store = WalletStoreSpy()
+        let remote = TokenRemoteDataSourceSpy(
+            portfolioResults: [address: .success(fresh)]
+        )
+        let repository = TokenRepository(
+            remote: remote,
+            store: store,
+            dateProvider: fixedDate(now)
+        )
+
+        await repository.suspendPortfolioLoads(address: address)
+        var blocked = repository
+            .portfolio(address: address, policy: .force)
+            .makeAsyncIterator()
+
+        #expect(try await blocked.next() == nil)
+        #expect(await store.portfolioLoadCounts[address] == nil)
+        #expect(await remote.portfolioCallCounts[address] == nil)
+
+        await repository.resumePortfolioLoads(address: address)
+        var resumed = repository
+            .portfolio(address: address, policy: .force)
+            .makeAsyncIterator()
+
+        #expect(try await resumed.next() == .refreshing)
+        #expect(try await resumed.next() == .fresh(fresh))
+        #expect(await store.portfolioLoadCounts[address] == 1)
+        #expect(await remote.portfolioCallCounts[address] == 1)
+    }
+
+    @Test func firstLoadAfterSettledSuspensionStartsFreshTask() async throws {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let address = try makeRepositoryAddress()
+        let fresh = makeRepositoryPortfolio(address: address, price: "2000")
+        let store = WalletStoreSpy()
+        let cleanupGate = PortfolioTaskCleanupGate()
+        let remote = TokenRemoteDataSourceSpy(
+            portfolioResults: [address: .success(fresh)],
+            gatedPortfolioAddresses: [address]
+        )
+        let repository = TokenRepository(
+            remote: remote,
+            store: store,
+            dateProvider: fixedDate(now),
+            beforePortfolioTaskCleanup: { _ in
+                await cleanupGate.holdFirstCleanup()
+            }
+        )
+        var initial = repository
+            .portfolio(address: address, policy: .force)
+            .makeAsyncIterator()
+        #expect(try await initial.next() == .refreshing)
+        await remote.waitUntilPortfolioRequested(address: address)
+
+        let suspension = Task {
+            await repository.suspendPortfolioLoads(address: address)
+        }
+        await remote.waitUntilPortfolioCancelled(address: address)
+        await remote.releasePortfolioRequest(address: address)
+        await cleanupGate.waitUntilFirstCleanupStarted()
+        await suspension.value
+        await repository.resumePortfolioLoads(address: address)
+
+        var resumed = repository
+            .portfolio(address: address, policy: .force)
+            .makeAsyncIterator()
+        #expect(try await resumed.next() == .refreshing)
+        await remote.waitUntilPortfolioRequestCount(2, address: address)
+
+        cleanupGate.releaseFirstCleanup()
+        #expect(try await initial.next() == nil)
+        #expect(repository.hasActivePortfolioTask(address: address))
+
+        await remote.releasePortfolioRequest(address: address)
+        #expect(try await resumed.next() == .fresh(fresh))
+        #expect(await remote.portfolioCallCounts[address] == 2)
+    }
+
     private func fixedDate(_ date: Date) -> DateProvider {
         DateProvider(now: { date })
+    }
+}
+
+@MainActor
+private final class PortfolioTaskCleanupGate {
+    private var shouldHold = true
+    private var hasStarted = false
+    private var holdContinuation: CheckedContinuation<Void, Never>?
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func holdFirstCleanup() async {
+        guard shouldHold else { return }
+        shouldHold = false
+        hasStarted = true
+        startWaiters.forEach { $0.resume() }
+        startWaiters = []
+        await withCheckedContinuation { continuation in
+            holdContinuation = continuation
+        }
+    }
+
+    func waitUntilFirstCleanupStarted() async {
+        guard !hasStarted else { return }
+        await withCheckedContinuation { continuation in
+            startWaiters.append(continuation)
+        }
+    }
+
+    func releaseFirstCleanup() {
+        holdContinuation?.resume()
+        holdContinuation = nil
     }
 }

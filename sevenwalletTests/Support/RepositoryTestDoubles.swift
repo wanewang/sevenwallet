@@ -15,7 +15,8 @@ extension RepositoryTestError: LocalizedError {
 
 enum WalletSessionDependencyCall: Equatable, Sendable {
     case load
-    case cancelPortfolio(EVMAddress)
+    case suspendPortfolio(EVMAddress)
+    case resumePortfolio(EVMAddress)
     case purge(EVMAddress)
     case delete(UUID)
 }
@@ -32,16 +33,28 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
     private var snapshot: SavedWalletSnapshot
     private var error: (any Error & Sendable)?
     private let recorder: WalletSessionCallRecorder?
+    private let isAddGated: Bool
+    private let isDeleteGated: Bool
+    private var addContinuation: CheckedContinuation<Void, Never>?
+    private var addWaiters: [CheckedContinuation<Void, Never>] = []
+    private var hasStartedAdd = false
+    private var deleteContinuation: CheckedContinuation<Void, Never>?
+    private var deleteWaiters: [CheckedContinuation<Void, Never>] = []
+    private var hasStartedDelete = false
 
     init(
         snapshot: SavedWalletSnapshot = .init(
             wallets: [],
             selectedWalletID: nil
         ),
-        recorder: WalletSessionCallRecorder? = nil
+        recorder: WalletSessionCallRecorder? = nil,
+        isAddGated: Bool = false,
+        isDeleteGated: Bool = false
     ) {
         self.snapshot = snapshot
         self.recorder = recorder
+        self.isAddGated = isAddGated
+        self.isDeleteGated = isDeleteGated
     }
 
     func loadSnapshot() async throws -> SavedWalletSnapshot {
@@ -51,12 +64,32 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
     }
 
     func addAndSelect(_ wallet: SavedWallet) async throws -> SavedWalletSnapshot {
+        hasStartedAdd = true
+        addWaiters.forEach { $0.resume() }
+        addWaiters = []
+        if isAddGated {
+            await withCheckedContinuation { continuation in
+                addContinuation = continuation
+            }
+        }
         if let error { throw error }
         snapshot = .init(
             wallets: snapshot.wallets + [wallet],
             selectedWalletID: wallet.id
         )
         return snapshot
+    }
+
+    func waitUntilAddStarted() async {
+        guard !hasStartedAdd else { return }
+        await withCheckedContinuation { continuation in
+            addWaiters.append(continuation)
+        }
+    }
+
+    func releaseAdd() {
+        addContinuation?.resume()
+        addContinuation = nil
     }
 
     func update(
@@ -83,6 +116,14 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
 
     func delete(id: UUID) async throws -> SavedWalletSnapshot {
         await recorder?.record(.delete(id))
+        hasStartedDelete = true
+        deleteWaiters.forEach { $0.resume() }
+        deleteWaiters = []
+        if isDeleteGated {
+            await withCheckedContinuation { continuation in
+                deleteContinuation = continuation
+            }
+        }
         if let error { throw error }
         let wallets = snapshot.wallets.filter { $0.id != id }
         snapshot = .init(
@@ -90,6 +131,18 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
             selectedWalletID: wallets.first?.id
         )
         return snapshot
+    }
+
+    func waitUntilDeleteStarted() async {
+        guard !hasStartedDelete else { return }
+        await withCheckedContinuation { continuation in
+            deleteWaiters.append(continuation)
+        }
+    }
+
+    func releaseDelete() {
+        deleteContinuation?.resume()
+        deleteContinuation = nil
     }
 
     func setError(_ error: (any Error & Sendable)?) {
@@ -101,15 +154,43 @@ actor RecordingAddressCachePurger: AddressCachePurging {
     private(set) var addresses: [EVMAddress] = []
     private var error: (any Error & Sendable)?
     private let recorder: WalletSessionCallRecorder?
+    private let isGated: Bool
+    private var purgeContinuation: CheckedContinuation<Void, Never>?
+    private var purgeWaiters: [CheckedContinuation<Void, Never>] = []
+    private var hasStartedPurge = false
 
-    init(recorder: WalletSessionCallRecorder? = nil) {
+    init(
+        recorder: WalletSessionCallRecorder? = nil,
+        isGated: Bool = false
+    ) {
         self.recorder = recorder
+        self.isGated = isGated
     }
 
     func purgeAddressData(address: EVMAddress) async throws {
         await recorder?.record(.purge(address))
+        hasStartedPurge = true
+        purgeWaiters.forEach { $0.resume() }
+        purgeWaiters = []
+        if isGated {
+            await withCheckedContinuation { continuation in
+                purgeContinuation = continuation
+            }
+        }
         if let error { throw error }
         addresses.append(address)
+    }
+
+    func waitUntilPurgeStarted() async {
+        guard !hasStartedPurge else { return }
+        await withCheckedContinuation { continuation in
+            purgeWaiters.append(continuation)
+        }
+    }
+
+    func releasePurge() {
+        purgeContinuation?.resume()
+        purgeContinuation = nil
     }
 
     func setError(_ error: (any Error & Sendable)?) {
@@ -117,15 +198,60 @@ actor RecordingAddressCachePurger: AddressCachePurging {
     }
 }
 
-actor RecordingPortfolioLoadCanceller: PortfolioLoadCancelling {
+actor RecordingPortfolioLoadController: PortfolioLoadControlling {
     private let recorder: WalletSessionCallRecorder?
+    private let isResumeGated: Bool
+    private var suspendedAddresses: Set<EVMAddress> = []
+    private var resumeContinuations: [
+        EVMAddress: [CheckedContinuation<Void, Never>]
+    ] = [:]
+    private var resumeWaiters: [
+        EVMAddress: [CheckedContinuation<Void, Never>]
+    ] = [:]
+    private var startedResumes: Set<EVMAddress> = []
 
-    init(recorder: WalletSessionCallRecorder? = nil) {
+    init(
+        recorder: WalletSessionCallRecorder? = nil,
+        isResumeGated: Bool = false
+    ) {
         self.recorder = recorder
+        self.isResumeGated = isResumeGated
     }
 
-    func cancelPortfolioLoad(address: EVMAddress) async {
-        await recorder?.record(.cancelPortfolio(address))
+    func suspendPortfolioLoads(address: EVMAddress) async {
+        await recorder?.record(.suspendPortfolio(address))
+        suspendedAddresses.insert(address)
+    }
+
+    func resumePortfolioLoads(address: EVMAddress) async {
+        await recorder?.record(.resumePortfolio(address))
+        startedResumes.insert(address)
+        let waiters = resumeWaiters.removeValue(forKey: address) ?? []
+        waiters.forEach { $0.resume() }
+        if isResumeGated {
+            await withCheckedContinuation { continuation in
+                resumeContinuations[address, default: []].append(continuation)
+            }
+        }
+        suspendedAddresses.remove(address)
+    }
+
+    func waitUntilResumeStarted(address: EVMAddress) async {
+        guard !startedResumes.contains(address) else { return }
+        await withCheckedContinuation { continuation in
+            resumeWaiters[address, default: []].append(continuation)
+        }
+    }
+
+    func releaseResume(address: EVMAddress) {
+        let continuations = resumeContinuations.removeValue(
+            forKey: address
+        ) ?? []
+        continuations.forEach { $0.resume() }
+    }
+
+    func isSuspended(address: EVMAddress) -> Bool {
+        suspendedAddresses.contains(address)
     }
 }
 
@@ -469,9 +595,13 @@ actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
     private let portfolioResults: [EVMAddress: Result<TokenPortfolio, RepositoryTestError>]
     private let gatesNativeRequest: Bool
     private let gatedPortfolioAddresses: Set<EVMAddress>
+    private let gatedPortfolioRequestCounts: [EVMAddress: Int]
     private var nativeContinuations: [CheckedContinuation<[WalletToken], Swift.Error>] = []
     private var portfolioContinuations: [EVMAddress: [CheckedContinuation<TokenPortfolio, Swift.Error>]] = [:]
     private var portfolioRequestWaiters: [EVMAddress: [CheckedContinuation<Void, Never>]] = [:]
+    private var portfolioRequestCountWaiters: [
+        EVMAddress: [Int: [CheckedContinuation<Void, Never>]]
+    ] = [:]
     private var cancelledPortfolioAddresses: Set<EVMAddress> = []
     private var portfolioCancellationWaiters: [EVMAddress: [CheckedContinuation<Void, Never>]] = [:]
 
@@ -482,12 +612,14 @@ actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
         nativeResult: Result<[WalletToken], RepositoryTestError> = .success([]),
         portfolioResults: [EVMAddress: Result<TokenPortfolio, RepositoryTestError>] = [:],
         gatesNativeRequest: Bool = false,
-        gatedPortfolioAddresses: Set<EVMAddress> = []
+        gatedPortfolioAddresses: Set<EVMAddress> = [],
+        gatedPortfolioRequestCounts: [EVMAddress: Int] = [:]
     ) {
         self.nativeResult = nativeResult
         self.portfolioResults = portfolioResults
         self.gatesNativeRequest = gatesNativeRequest
         self.gatedPortfolioAddresses = gatedPortfolioAddresses
+        self.gatedPortfolioRequestCounts = gatedPortfolioRequestCounts
     }
 
     func fetchNativeTokens() async throws -> [WalletToken] {
@@ -500,9 +632,15 @@ actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
 
     func fetchPortfolio(address: EVMAddress) async throws -> TokenPortfolio {
         portfolioCallCounts[address, default: 0] += 1
+        let callCount = portfolioCallCounts[address, default: 0]
         let requestWaiters = portfolioRequestWaiters.removeValue(forKey: address) ?? []
         requestWaiters.forEach { $0.resume() }
-        guard gatedPortfolioAddresses.contains(address) else {
+        let countWaiters = portfolioRequestCountWaiters[address]?
+            .removeValue(forKey: callCount) ?? []
+        countWaiters.forEach { $0.resume() }
+        let shouldGate = gatedPortfolioAddresses.contains(address)
+            || callCount <= gatedPortfolioRequestCounts[address, default: 0]
+        guard shouldGate else {
             return try result(for: address).get()
         }
         return try await withTaskCancellationHandler {
@@ -518,6 +656,19 @@ actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
         guard portfolioCallCounts[address, default: 0] == 0 else { return }
         await withCheckedContinuation { continuation in
             portfolioRequestWaiters[address, default: []].append(continuation)
+        }
+    }
+
+    func waitUntilPortfolioRequestCount(
+        _ count: Int,
+        address: EVMAddress
+    ) async {
+        guard portfolioCallCounts[address, default: 0] < count else { return }
+        await withCheckedContinuation { continuation in
+            portfolioRequestCountWaiters[address, default: [:]][
+                count,
+                default: []
+            ].append(continuation)
         }
     }
 
@@ -602,11 +753,16 @@ actor WalletStoreSpy: WalletStoreProtocol, AddressCachePurging {
         EVMAddress: [CheckedContinuation<Void, Never>]
     ] = [:]
     private var startedPortfolioSaves: Set<EVMAddress> = []
+    private var cancelledPortfolioSaves: Set<EVMAddress> = []
+    private var portfolioSaveCancellationWaiters: [
+        EVMAddress: [CheckedContinuation<Void, Never>]
+    ] = [:]
 
     private(set) var nativeSaveDates: [Date] = []
     private(set) var portfolioSaveDates: [EVMAddress: [Date]] = [:]
     private(set) var transactionSaveDates: [TransactionRequest: [Date]] = [:]
     private(set) var transactionLoadCount = 0
+    private(set) var portfolioLoadCounts: [EVMAddress: Int] = [:]
 
     init(
         nativeCache: CachedResource<[WalletToken]>? = nil,
@@ -630,7 +786,8 @@ actor WalletStoreSpy: WalletStoreProtocol, AddressCachePurging {
     }
 
     func loadPortfolio(address: EVMAddress) async throws -> CachedResource<TokenPortfolio>? {
-        portfolioCaches[address]
+        portfolioLoadCounts[address, default: 0] += 1
+        return portfolioCaches[address]
     }
 
     func savePortfolio(_ value: TokenPortfolio, fetchedAt: Date) async throws {
@@ -640,10 +797,19 @@ actor WalletStoreSpy: WalletStoreProtocol, AddressCachePurging {
                 forKey: value.address
             ) ?? []
             waiters.forEach { $0.resume() }
-            await withCheckedContinuation { continuation in
-                portfolioSaveContinuations[value.address, default: []].append(
-                    continuation
-                )
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in
+                    portfolioSaveContinuations[
+                        value.address,
+                        default: []
+                    ].append(continuation)
+                }
+            } onCancel: {
+                Task {
+                    await self.recordPortfolioSaveCancellation(
+                        address: value.address
+                    )
+                }
             }
         }
         portfolioCaches[value.address] = CachedResource(value: value, fetchedAt: fetchedAt)
@@ -662,6 +828,23 @@ actor WalletStoreSpy: WalletStoreProtocol, AddressCachePurging {
             forKey: address
         ) ?? []
         continuations.forEach { $0.resume() }
+    }
+
+    func waitUntilPortfolioSaveCancelled(address: EVMAddress) async {
+        guard !cancelledPortfolioSaves.contains(address) else { return }
+        await withCheckedContinuation { continuation in
+            portfolioSaveCancellationWaiters[address, default: []].append(
+                continuation
+            )
+        }
+    }
+
+    private func recordPortfolioSaveCancellation(address: EVMAddress) {
+        cancelledPortfolioSaves.insert(address)
+        let waiters = portfolioSaveCancellationWaiters.removeValue(
+            forKey: address
+        ) ?? []
+        waiters.forEach { $0.resume() }
     }
 
     func purgeAddressData(address: EVMAddress) async throws {

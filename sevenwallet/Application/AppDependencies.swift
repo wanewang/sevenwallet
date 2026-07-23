@@ -40,7 +40,7 @@ enum AppDependencies {
 
         let savedWalletStore = SavedWalletStore(modelContainer: container)
         let repository: any TokenRepositoryProtocol
-        let portfolioLoadCanceller: any PortfolioLoadCancelling
+        let portfolioLoadController: any PortfolioLoadControlling
 
         do {
             let configuration = try AppConfiguration(
@@ -57,24 +57,24 @@ enum AppDependencies {
                 store: cacheStore
             )
             repository = tokenRepository
-            portfolioLoadCanceller = tokenRepository
+            portfolioLoadController = tokenRepository
         } catch let error as AppConfiguration.Error {
             repository = FailingTokenRepository(
                 message: error.localizedDescription
             )
-            portfolioLoadCanceller = NoopPortfolioLoadCanceller()
+            portfolioLoadController = NoopPortfolioLoadController()
         } catch {
             repository = FailingTokenRepository(
                 message: "Unable to load wallet data."
             )
-            portfolioLoadCanceller = NoopPortfolioLoadCanceller()
+            portfolioLoadController = NoopPortfolioLoadController()
         }
 
         return WalletAppState(
             session: WalletSession(
                 store: savedWalletStore,
                 cachePurger: cacheStore,
-                portfolioLoadCanceller: portfolioLoadCanceller
+                portfolioLoadController: portfolioLoadController
             ),
             homeViewModel: WalletHomeViewModel(tokenRepository: repository)
         )

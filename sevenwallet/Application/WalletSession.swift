@@ -1,27 +1,37 @@
 import Foundation
 import Observation
 
+nonisolated enum WalletSessionError: LocalizedError, Equatable {
+    case mutationInProgress
+
+    var errorDescription: String? {
+        "Please wait for the current wallet change to finish."
+    }
+}
+
 @MainActor
 @Observable
 final class WalletSession {
     private(set) var wallets: [SavedWallet] = []
     private(set) var selectedWallet: SavedWallet?
     private(set) var isLoading = false
+    private(set) var isDeletingWallet = false
     private(set) var loadErrorMessage: String?
+    private var isMutatingWallets = false
 
     private let store: any SavedWalletStoreProtocol
     private let cachePurger: any AddressCachePurging
-    private let portfolioLoadCanceller: any PortfolioLoadCancelling
+    private let portfolioLoadController: any PortfolioLoadControlling
 
     init(
         store: any SavedWalletStoreProtocol,
         cachePurger: any AddressCachePurging,
-        portfolioLoadCanceller: any PortfolioLoadCancelling =
-            NoopPortfolioLoadCanceller()
+        portfolioLoadController: any PortfolioLoadControlling =
+            NoopPortfolioLoadController()
     ) {
         self.store = store
         self.cachePurger = cachePurger
-        self.portfolioLoadCanceller = portfolioLoadCanceller
+        self.portfolioLoadController = portfolioLoadController
     }
 
     func load() async {
@@ -40,12 +50,20 @@ final class WalletSession {
         address: EVMAddress,
         cardColor: WalletCardColor
     ) async throws {
+        guard !isMutatingWallets else {
+            throw WalletSessionError.mutationInProgress
+        }
+        isMutatingWallets = true
+        defer { isMutatingWallets = false }
+
         let wallet = SavedWallet(
             name: name,
             address: address,
             cardColor: cardColor
         )
-        apply(try await store.addAndSelect(wallet))
+        let snapshot = try await store.addAndSelect(wallet)
+        await portfolioLoadController.resumePortfolioLoads(address: address)
+        apply(snapshot)
     }
 
     func update(
@@ -61,12 +79,37 @@ final class WalletSession {
     }
 
     func delete(id: UUID) async throws {
+        guard !isMutatingWallets else {
+            throw WalletSessionError.mutationInProgress
+        }
         guard let wallet = wallets.first(where: { $0.id == id }) else {
             throw SavedWalletStoreError.walletNotFound
         }
-        await portfolioLoadCanceller.cancelPortfolioLoad(address: wallet.address)
-        try await cachePurger.purgeAddressData(address: wallet.address)
-        apply(try await store.delete(id: id))
+        isMutatingWallets = true
+        isDeletingWallet = true
+        defer {
+            isDeletingWallet = false
+            isMutatingWallets = false
+        }
+
+        await portfolioLoadController.suspendPortfolioLoads(
+            address: wallet.address
+        )
+        do {
+            try await cachePurger.purgeAddressData(address: wallet.address)
+            let snapshot = try await store.delete(id: id)
+            if snapshot.selectedWallet?.address == wallet.address {
+                await portfolioLoadController.resumePortfolioLoads(
+                    address: wallet.address
+                )
+            }
+            apply(snapshot)
+        } catch {
+            await portfolioLoadController.resumePortfolioLoads(
+                address: wallet.address
+            )
+            throw error
+        }
     }
 
     private func apply(_ snapshot: SavedWalletSnapshot) {

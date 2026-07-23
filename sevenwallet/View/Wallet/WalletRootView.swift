@@ -18,6 +18,7 @@ struct WalletRootView: View {
                 wallet: session.selectedWallet,
                 walletLoadError: session.loadErrorMessage,
                 hasResolvedWallets: hasResolvedWallets,
+                isWalletDeletionInProgress: session.isDeletingWallet,
                 onRetryWallets: { Task { await loadWallets() } },
                 onAddWallet: { path.append(.addWallet) },
                 onEditWallet: { path.append(.editWallet($0)) }
