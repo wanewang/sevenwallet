@@ -53,6 +53,7 @@ enum RepositoryError: Swift.Error, Equatable, LocalizedError {
     nonisolated var errorDescription: String? {
         switch self {
         case .invalidTransactionLimit:
+            "Transaction limit must be between 1 and 100."
         case .storageReadFailed:
             "Unable to load wallet data."
         case .storageWriteFailed:
