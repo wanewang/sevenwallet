@@ -13,6 +13,109 @@ extension RepositoryTestError: LocalizedError {
     }
 }
 
+enum WalletSessionDependencyCall: Equatable, Sendable {
+    case load
+    case purge(EVMAddress)
+    case delete(UUID)
+}
+
+actor WalletSessionCallRecorder {
+    private(set) var calls: [WalletSessionDependencyCall] = []
+
+    func record(_ call: WalletSessionDependencyCall) {
+        calls.append(call)
+    }
+}
+
+actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
+    private var snapshot: SavedWalletSnapshot
+    private var error: (any Error & Sendable)?
+    private let recorder: WalletSessionCallRecorder?
+
+    init(
+        snapshot: SavedWalletSnapshot = .init(
+            wallets: [],
+            selectedWalletID: nil
+        ),
+        recorder: WalletSessionCallRecorder? = nil
+    ) {
+        self.snapshot = snapshot
+        self.recorder = recorder
+    }
+
+    func loadSnapshot() async throws -> SavedWalletSnapshot {
+        await recorder?.record(.load)
+        if let error { throw error }
+        return snapshot
+    }
+
+    func addAndSelect(_ wallet: SavedWallet) async throws -> SavedWalletSnapshot {
+        if let error { throw error }
+        snapshot = .init(
+            wallets: snapshot.wallets + [wallet],
+            selectedWalletID: wallet.id
+        )
+        return snapshot
+    }
+
+    func update(
+        id: UUID,
+        name: String,
+        cardColor: WalletCardColor
+    ) async throws -> SavedWalletSnapshot {
+        if let error { throw error }
+        snapshot = .init(
+            wallets: snapshot.wallets.map {
+                guard $0.id == id else { return $0 }
+                return SavedWallet(
+                    id: $0.id,
+                    name: name,
+                    address: $0.address,
+                    cardColor: cardColor,
+                    createdAt: $0.createdAt
+                )
+            },
+            selectedWalletID: snapshot.selectedWalletID
+        )
+        return snapshot
+    }
+
+    func delete(id: UUID) async throws -> SavedWalletSnapshot {
+        await recorder?.record(.delete(id))
+        if let error { throw error }
+        let wallets = snapshot.wallets.filter { $0.id != id }
+        snapshot = .init(
+            wallets: wallets,
+            selectedWalletID: wallets.first?.id
+        )
+        return snapshot
+    }
+
+    func setError(_ error: (any Error & Sendable)?) {
+        self.error = error
+    }
+}
+
+actor RecordingAddressCachePurger: AddressCachePurging {
+    private(set) var addresses: [EVMAddress] = []
+    private var error: (any Error & Sendable)?
+    private let recorder: WalletSessionCallRecorder?
+
+    init(recorder: WalletSessionCallRecorder? = nil) {
+        self.recorder = recorder
+    }
+
+    func purgeAddressData(address: EVMAddress) async throws {
+        await recorder?.record(.purge(address))
+        if let error { throw error }
+        addresses.append(address)
+    }
+
+    func setError(_ error: (any Error & Sendable)?) {
+        self.error = error
+    }
+}
+
 @MainActor
 final class ScriptedTokenRepository: TokenRepositoryProtocol {
     typealias Event = RepositoryLoadEvent<[WalletToken]>
