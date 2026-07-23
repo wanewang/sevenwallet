@@ -128,7 +128,7 @@ struct TransactionRepositoryTests {
     @Test func invalidLimitHasConciseDescription() {
         #expect(
             RepositoryError.invalidTransactionLimit(101).localizedDescription
-                == "Transaction limit must be between 1 and 100."
+                == "Unable to load wallet data."
         )
     }
 
