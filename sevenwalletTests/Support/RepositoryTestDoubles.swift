@@ -255,10 +255,72 @@ final class PortfolioTokenRepositorySpy: TokenRepositoryProtocol {
     typealias NativeEvent = RepositoryLoadEvent<[WalletToken]>
     typealias PortfolioEvent = RepositoryLoadEvent<TokenPortfolio>
 
+    struct PortfolioScript: Sendable {
+        let beforeGate: [PortfolioEvent]
+        let afterGate: [PortfolioEvent]
+        let error: RepositoryTestError?
+        let isGated: Bool
+        let holdsOpen: Bool
+
+        init(
+            events: [PortfolioEvent],
+            error: RepositoryTestError? = nil,
+            holdsOpen: Bool = false
+        ) {
+            beforeGate = events
+            afterGate = []
+            self.error = error
+            isGated = false
+            self.holdsOpen = holdsOpen
+        }
+
+        static func gated(
+            before: [PortfolioEvent],
+            after: [PortfolioEvent],
+            error: RepositoryTestError? = nil
+        ) -> PortfolioScript {
+            PortfolioScript(
+                beforeGate: before,
+                afterGate: after,
+                error: error,
+                isGated: true,
+                holdsOpen: false
+            )
+        }
+
+        private init(
+            beforeGate: [PortfolioEvent],
+            afterGate: [PortfolioEvent],
+            error: RepositoryTestError?,
+            isGated: Bool,
+            holdsOpen: Bool
+        ) {
+            self.beforeGate = beforeGate
+            self.afterGate = afterGate
+            self.error = error
+            self.isGated = isGated
+            self.holdsOpen = holdsOpen
+        }
+    }
+
+    private struct PortfolioGate {
+        let continuation: AsyncThrowingStream<
+            PortfolioEvent,
+            Swift.Error
+        >.Continuation
+        let events: [PortfolioEvent]
+        let error: RepositoryTestError?
+    }
+
     private var nativeScripts: [[NativeEvent]]
-    private var portfolioScripts: [[PortfolioEvent]]
-    private let holdsPortfolioOpen: Bool
+    private var portfolioScripts: [PortfolioScript]
+    private var portfolioGates: [Int: PortfolioGate] = [:]
+    private var portfolioGateWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
+    private var portfolioTerminationWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
+    private(set) var requestedNativePolicies: [RefreshPolicy] = []
     private(set) var requestedPortfolioAddresses: [EVMAddress] = []
+    private(set) var requestedPortfolioPolicies: [RefreshPolicy] = []
+    private(set) var terminatedPortfolioRequests: Set<Int> = []
 
     init(
         nativeScripts: [[NativeEvent]] = [],
@@ -266,25 +328,85 @@ final class PortfolioTokenRepositorySpy: TokenRepositoryProtocol {
         holdsPortfolioOpen: Bool = false
     ) {
         self.nativeScripts = nativeScripts
-        self.portfolioScripts = portfolioScripts
-        self.holdsPortfolioOpen = holdsPortfolioOpen
+        self.portfolioScripts = portfolioScripts.map {
+            PortfolioScript(events: $0, holdsOpen: holdsPortfolioOpen)
+        }
+    }
+
+    init(
+        nativeScripts: [[NativeEvent]] = [],
+        portfolioRequestScripts: [PortfolioScript]
+    ) {
+        self.nativeScripts = nativeScripts
+        portfolioScripts = portfolioRequestScripts
     }
 
     func nativeTokens(
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<NativeEvent, Swift.Error> {
-        stream(events: nativeScripts.removeFirst(), holdsOpen: false)
+        requestedNativePolicies.append(policy)
+        return stream(events: nativeScripts.removeFirst(), holdsOpen: false)
     }
 
     func portfolio(
         address: EVMAddress,
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<PortfolioEvent, Swift.Error> {
+        let requestIndex = requestedPortfolioAddresses.count
         requestedPortfolioAddresses.append(address)
-        return stream(
-            events: portfolioScripts.removeFirst(),
-            holdsOpen: holdsPortfolioOpen
-        )
+        requestedPortfolioPolicies.append(policy)
+        let script = portfolioScripts.removeFirst()
+        let repository = self
+
+        return AsyncThrowingStream { continuation in
+            continuation.onTermination = { @Sendable _ in
+                Task { @MainActor in
+                    repository.recordPortfolioTermination(request: requestIndex)
+                }
+            }
+            for event in script.beforeGate {
+                continuation.yield(event)
+            }
+            if script.isGated {
+                portfolioGates[requestIndex] = PortfolioGate(
+                    continuation: continuation,
+                    events: script.afterGate,
+                    error: script.error
+                )
+                let waiters = portfolioGateWaiters.removeValue(
+                    forKey: requestIndex
+                ) ?? []
+                waiters.forEach { $0.resume() }
+            } else if !script.holdsOpen {
+                finish(continuation, error: script.error)
+            }
+        }
+    }
+
+    func waitUntilPortfolioGated(request requestIndex: Int = 0) async {
+        guard portfolioGates[requestIndex] == nil else { return }
+        await withCheckedContinuation { continuation in
+            portfolioGateWaiters[requestIndex, default: []].append(continuation)
+        }
+    }
+
+    func releasePortfolioGate(request requestIndex: Int = 0) {
+        guard let gate = portfolioGates.removeValue(forKey: requestIndex) else {
+            return
+        }
+        for event in gate.events {
+            gate.continuation.yield(event)
+        }
+        finish(gate.continuation, error: gate.error)
+    }
+
+    func waitUntilPortfolioTerminated(request requestIndex: Int = 0) async {
+        guard !terminatedPortfolioRequests.contains(requestIndex) else { return }
+        await withCheckedContinuation { continuation in
+            portfolioTerminationWaiters[requestIndex, default: []].append(
+                continuation
+            )
+        }
     }
 
     private func stream<Value: Sendable>(
@@ -297,6 +419,29 @@ final class PortfolioTokenRepositorySpy: TokenRepositoryProtocol {
             }
             if !holdsOpen { continuation.finish() }
         }
+    }
+
+    private func finish(
+        _ continuation: AsyncThrowingStream<
+            PortfolioEvent,
+            Swift.Error
+        >.Continuation,
+        error: RepositoryTestError?
+    ) {
+        if let error {
+            continuation.finish(throwing: error)
+        } else {
+            continuation.finish()
+        }
+    }
+
+    private func recordPortfolioTermination(request requestIndex: Int) {
+        portfolioGates.removeValue(forKey: requestIndex)
+        terminatedPortfolioRequests.insert(requestIndex)
+        let waiters = portfolioTerminationWaiters.removeValue(
+            forKey: requestIndex
+        ) ?? []
+        waiters.forEach { $0.resume() }
     }
 }
 

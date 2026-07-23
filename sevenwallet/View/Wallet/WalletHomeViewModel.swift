@@ -13,8 +13,7 @@ final class WalletHomeViewModel {
     private let tokenRepository: any TokenRepositoryProtocol
     private let dateProvider: DateProvider
     private var selectedWallet: SavedWallet?
-    private var loadsSelectedPortfolio = false
-    private var didLoadSelection = false
+    private var compatibilityWallet: SavedWallet?
     private var refreshCoordinator = PullRefreshCoordinator()
     private var requestGeneration = 0
 
@@ -38,13 +37,15 @@ final class WalletHomeViewModel {
                 address: address,
                 cardColor: .blue
             )
-            selectedWallet = wallet
+            selectedWallet = nil
+            compatibilityWallet = wallet
             walletCard = WalletCardViewModel(
                 wallet: wallet,
                 tokens: []
             )
         } else {
             selectedWallet = nil
+            compatibilityWallet = nil
             walletCard = nil
         }
     }
@@ -60,15 +61,14 @@ final class WalletHomeViewModel {
     func load(wallet: SavedWallet?) async {
         let addressChanged = selectedWallet?.address != wallet?.address
         selectedWallet = wallet
-        loadsSelectedPortfolio = true
+        compatibilityWallet = nil
 
         if addressChanged {
             tokens = []
         }
         rebuildWalletCard()
 
-        guard addressChanged || !didLoadSelection else { return }
-        didLoadSelection = true
+        guard addressChanged || tokens.isEmpty else { return }
         await consume(policy: .ifExpired)
     }
 
@@ -165,7 +165,7 @@ final class WalletHomeViewModel {
                 RepositoryLoadEvent<[WalletToken]>,
                 Swift.Error
             >
-            if loadsSelectedPortfolio, let selectedWallet {
+            if let selectedWallet {
                 stream = tokenRepository
                     .portfolio(address: selectedWallet.address, policy: policy)
                     .mapValues(\.tokens)
@@ -196,7 +196,7 @@ final class WalletHomeViewModel {
     }
 
     private func rebuildWalletCard() {
-        walletCard = selectedWallet.map {
+        walletCard = (selectedWallet ?? compatibilityWallet).map {
             WalletCardViewModel(wallet: $0, tokens: tokens)
         }
     }
