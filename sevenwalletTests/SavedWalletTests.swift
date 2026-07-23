@@ -26,6 +26,11 @@ struct SavedWalletTests {
         ) == nil)
     }
 
+    @Test func addressRejectsFullWidthHexDigits() {
+        let fullWidthAddress = "0x" + String(repeating: "０", count: 40)
+        #expect(WalletInputValidator.validatedAddress(fullWidthAddress) == nil)
+    }
+
     @Test func colorsAreStableAndComplete() {
         #expect(WalletCardColor.allCases == [.blue, .purple, .pink, .teal, .amber])
         #expect(Set(WalletCardColor.allCases.map(\.rawValue)).count == 5)

@@ -239,6 +239,9 @@ struct WalletFormView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(color.rawValue.capitalized) card color")
                     .accessibilityIdentifier("wallet-color-\(color.rawValue)")
+                    .accessibilityAddTraits(
+                        viewModel.selectedColor == color ? .isSelected : []
+                    )
                 }
             }
         }

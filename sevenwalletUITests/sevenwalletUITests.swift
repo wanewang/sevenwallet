@@ -178,12 +178,18 @@ final class sevenwalletUITests: XCTestCase {
 
         let name = app.textFields["wallet-name-field"]
         let address = app.textFields["wallet-address-field"]
+        let blueColor = app.buttons["wallet-color-blue"]
+        let tealColor = app.buttons["wallet-color-teal"]
         XCTAssertTrue(name.waitForExistence(timeout: 2))
+        XCTAssertTrue(blueColor.isSelected)
+        XCTAssertFalse(tealColor.isSelected)
         name.tap()
         name.typeText("Main Wallet")
         address.tap()
         address.typeText("0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92")
-        app.buttons["wallet-color-teal"].tap()
+        tealColor.tap()
+        XCTAssertTrue(tealColor.isSelected)
+        XCTAssertFalse(blueColor.isSelected)
         app.buttons["wallet-primary-action"].tap()
 
         XCTAssertTrue(app.otherElements["wallet-card"].waitForExistence(timeout: 2))
