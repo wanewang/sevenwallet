@@ -3,9 +3,29 @@ import SwiftUI
 @MainActor
 struct WalletHomeView: View {
     @State private var viewModel: WalletHomeViewModel
+    let wallet: SavedWallet?
+    let walletLoadError: String?
+    let hasResolvedWallets: Bool
+    let onRetryWallets: () -> Void
+    let onAddWallet: () -> Void
+    let onEditWallet: (UUID) -> Void
 
-    init(viewModel: WalletHomeViewModel? = nil) {
+    init(
+        viewModel: WalletHomeViewModel? = nil,
+        wallet: SavedWallet? = nil,
+        walletLoadError: String? = nil,
+        hasResolvedWallets: Bool = true,
+        onRetryWallets: @escaping () -> Void = {},
+        onAddWallet: @escaping () -> Void = {},
+        onEditWallet: @escaping (UUID) -> Void = { _ in }
+    ) {
         _viewModel = State(initialValue: viewModel ?? .sample())
+        self.wallet = wallet
+        self.walletLoadError = walletLoadError
+        self.hasResolvedWallets = hasResolvedWallets
+        self.onRetryWallets = onRetryWallets
+        self.onAddWallet = onAddWallet
+        self.onEditWallet = onEditWallet
     }
 
     private var theme: Theme {
@@ -26,13 +46,24 @@ struct WalletHomeView: View {
                 ScrollView {
                     LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                         Section {
+                            if let walletLoadError {
+                                walletStorageError(walletLoadError)
+                                    .padding(.bottom, 12)
+                            }
+
                             if let walletCard = viewModel.walletCard {
                                 WalletCardView(
                                     viewModel: walletCard,
-                                    theme: theme
+                                    theme: theme,
+                                    onEdit: { onEditWallet(walletCard.id) }
                                 )
-                            } else {
-                                EmptyWalletCardView(theme: theme)
+                            } else if hasResolvedWallets,
+                                      wallet == nil,
+                                      walletLoadError == nil {
+                                EmptyWalletCardView(
+                                    theme: theme,
+                                    onAdd: onAddWallet
+                                )
                             }
                         }
                         .padding(.horizontal, 16)
@@ -72,8 +103,8 @@ struct WalletHomeView: View {
                 }
             }
         }
-        .task {
-            await viewModel.loadTokens()
+        .task(id: wallet) {
+            await viewModel.load(wallet: wallet)
         }
         .toolbar(.hidden, for: .navigationBar)
         .tint(Theme.accent)
@@ -81,6 +112,22 @@ struct WalletHomeView: View {
             \.colorScheme,
             viewModel.isThemeLight ? .light : .dark
         )
+    }
+
+    private func walletStorageError(_ message: String) -> some View {
+        HStack(spacing: 12) {
+            Label(message, systemImage: "exclamationmark.circle")
+                .font(.caption)
+                .foregroundStyle(Theme.warn)
+
+            Spacer(minLength: 8)
+
+            Button("Retry", action: onRetryWallets)
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("retry-wallets-button")
+        }
+        .accessibilityIdentifier("wallet-load-error-message")
     }
 
     private var tokensHeader: some View {

@@ -6,14 +6,16 @@ import Testing
 struct WalletHomeViewModelTests {
     @Test
     func missingConfigurationBecomesHomeError() async {
-        let home = AppDependencies.makeHomeViewModel(
+        let state = AppDependencies.makeAppState(
             arguments: [],
             environment: [:],
             infoDictionary: [:],
             inMemoryStore: true
         )
+        await state.session.load()
+        let home = state.homeViewModel
 
-        await home.loadTokens()
+        await home.load(wallet: state.session.selectedWallet)
 
         #expect(home.tokens.isEmpty)
         #expect(home.tokenErrorMessage == "BASE_URL is not configured.")
@@ -21,13 +23,15 @@ struct WalletHomeViewModelTests {
 
     @Test
     func fixtureLoadsWithoutRuntimeConfiguration() async {
-        let home = AppDependencies.makeHomeViewModel(
+        let state = AppDependencies.makeAppState(
             arguments: ["UI_TEST_FIXTURE"],
             environment: [:],
             infoDictionary: [:]
         )
+        await state.session.load()
+        let home = state.homeViewModel
 
-        await home.loadTokens()
+        await home.load(wallet: state.session.selectedWallet)
 
         #expect(home.walletCard == nil)
         #expect(home.tokens.first?.symbol == "ETH")
@@ -37,7 +41,7 @@ struct WalletHomeViewModelTests {
 
     @Test
     func fixtureSupportsPopulatedWalletAndLongTokenList() async {
-        let home = AppDependencies.makeHomeViewModel(
+        let state = AppDependencies.makeAppState(
             arguments: [
                 "UI_TEST_FIXTURE",
                 "UI_TEST_POPULATED_WALLET",
@@ -46,8 +50,10 @@ struct WalletHomeViewModelTests {
             environment: [:],
             infoDictionary: [:]
         )
+        await state.session.load()
+        let home = state.homeViewModel
 
-        await home.loadTokens()
+        await home.load(wallet: state.session.selectedWallet)
 
         #expect(home.walletCard?.name == "Main Wallet")
         #expect(home.tokens.count == 16)
@@ -56,13 +62,15 @@ struct WalletHomeViewModelTests {
 
     @Test
     func fixtureSupportsTokenFailure() async {
-        let home = AppDependencies.makeHomeViewModel(
+        let state = AppDependencies.makeAppState(
             arguments: ["UI_TEST_FIXTURE", "UI_TEST_TOKEN_ERROR"],
             environment: [:],
             infoDictionary: [:]
         )
+        await state.session.load()
+        let home = state.homeViewModel
 
-        await home.loadTokens()
+        await home.load(wallet: state.session.selectedWallet)
 
         #expect(home.tokens.isEmpty)
         #expect(home.tokenErrorMessage == "Unable to load tokens.")
@@ -70,13 +78,15 @@ struct WalletHomeViewModelTests {
 
     @Test
     func cancellingDelayedFixtureStopsLoadingWithoutPublishingTokens() async {
-        let home = AppDependencies.makeHomeViewModel(
+        let state = AppDependencies.makeAppState(
             arguments: ["UI_TEST_FIXTURE", "UI_TEST_DELAYED_TOKENS"],
             environment: [:],
             infoDictionary: [:]
         )
+        await state.session.load()
+        let home = state.homeViewModel
 
-        let load = Task { await home.loadTokens() }
+        let load = Task { await home.load(wallet: state.session.selectedWallet) }
         await waitForLoading(home)
         #expect(home.isLoadingTokens)
 
