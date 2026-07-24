@@ -2,12 +2,18 @@ import SwiftUI
 
 @MainActor
 struct WalletFormView: View {
+    private enum FocusedField {
+        case name
+        case address
+    }
+
     @State private var viewModel: WalletFormViewModel
     let session: WalletSession
     let theme: Theme
     let onComplete: () -> Void
     let onCancel: () -> Void
     @State private var confirmsDelete = false
+    @FocusState private var focusedField: FocusedField?
 
     init(
         mode: WalletFormMode,
@@ -27,23 +33,34 @@ struct WalletFormView: View {
         ZStack {
             theme.bg.ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    header
-                    preview
-                    walletNameField
-                    addressField
-                    networkRow
-                    colorPicker
-                    primaryAction
+            VStack(spacing: 22) {
+                header
+                    .padding(.horizontal, 18)
 
-                    if viewModel.showsDelete {
-                        deleteButton
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        preview
+                        walletNameField
+                        addressField
+                        networkRow
+                        colorPicker
+                        primaryAction
+
+                        if viewModel.showsDelete {
+                            deleteButton
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 18)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        focusedField = nil
                     }
                 }
-                .padding(18)
+                .scrollDismissesKeyboard(.immediately)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
+            .padding(.top, 18)
         }
         .toolbar(.hidden, for: .navigationBar)
         .tint(Theme.accent)
@@ -130,6 +147,7 @@ struct WalletFormView: View {
                     }
                 )
             )
+            .focused($focusedField, equals: .name)
             .textInputAutocapitalization(.words)
             .padding(.horizontal, 14)
             .frame(minHeight: 52)
@@ -154,6 +172,7 @@ struct WalletFormView: View {
                         }
                     )
                 )
+                .focused($focusedField, equals: .address)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
