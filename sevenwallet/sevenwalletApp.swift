@@ -9,11 +9,14 @@ import SwiftUI
 
 @main
 struct sevenwalletApp: App {
-    @State private var homeViewModel = AppDependencies.makeHomeViewModel()
+    @State private var state = AppDependencies.makeAppState()
 
     var body: some Scene {
         WindowGroup {
-            WalletHomeView(viewModel: homeViewModel)
+            WalletRootView(
+                session: state.session,
+                homeViewModel: state.homeViewModel
+            )
         }
     }
 }

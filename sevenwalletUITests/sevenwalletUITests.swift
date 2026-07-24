@@ -28,6 +28,7 @@ final class sevenwalletUITests: XCTestCase {
         app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_POPULATED_WALLET"]
         app.launch()
 
+        XCTAssertTrue(app.otherElements["wallet-card"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["wallet-selector-button"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["theme-toggle-button"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Main Wallet"].waitForExistence(timeout: 2))
@@ -46,7 +47,7 @@ final class sevenwalletUITests: XCTestCase {
         app.launchArguments = ["UI_TEST_FIXTURE"]
         app.launch()
 
-        XCTAssertTrue(app.otherElements["empty-wallet-card"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["empty-wallet-card"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["SEVEN WALLET"].exists)
         XCTAssertTrue(app.staticTexts["Add your first wallet"].exists)
         XCTAssertTrue(app.staticTexts["Import an address to start tracking"].exists)
@@ -140,7 +141,7 @@ final class sevenwalletUITests: XCTestCase {
         emptyApp.launchArguments = ["UI_TEST_FIXTURE"]
         emptyApp.launch()
 
-        let emptyCard = emptyApp.otherElements["empty-wallet-card"]
+        let emptyCard = emptyApp.buttons["empty-wallet-card"]
         XCTAssertTrue(emptyCard.waitForExistence(timeout: 2))
         let emptyHeight = emptyCard.frame.height
         emptyApp.terminate()
@@ -162,6 +163,102 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testAddWalletFlow() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UI_TEST_FIXTURE",
+            "UI_TEST_PERSIST_SAVED_WALLETS",
+            "UI_TEST_CLEAR_SAVED_WALLETS"
+        ]
+        app.launch()
+
+        let emptyCard = app.buttons["empty-wallet-card"]
+        XCTAssertTrue(emptyCard.waitForExistence(timeout: 2))
+        emptyCard.tap()
+
+        let name = app.textFields["wallet-name-field"]
+        let address = app.textFields["wallet-address-field"]
+        let blueColor = app.buttons["wallet-color-blue"]
+        let tealColor = app.buttons["wallet-color-teal"]
+        XCTAssertTrue(name.waitForExistence(timeout: 2))
+        XCTAssertTrue(blueColor.isSelected)
+        XCTAssertFalse(tealColor.isSelected)
+        name.tap()
+        name.typeText("Main Wallet")
+        address.tap()
+        address.typeText("0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92")
+        tealColor.tap()
+        XCTAssertTrue(tealColor.isSelected)
+        XCTAssertFalse(blueColor.isSelected)
+        app.buttons["wallet-primary-action"].tap()
+
+        XCTAssertTrue(app.otherElements["wallet-card"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Main Wallet"].exists)
+        XCTAssertFalse(app.buttons["empty-wallet-card"].exists)
+    }
+
+    @MainActor
+    func testCopyDoesNotOpenEditButEditButtonDoes() throws {
+        let app = seededWalletApp()
+        app.launch()
+
+        app.buttons["copy-wallet-address-button"].tap()
+        XCTAssertFalse(app.textFields["wallet-name-field"].exists)
+
+        app.buttons["edit-wallet-button"].tap()
+        XCTAssertTrue(app.staticTexts["Edit wallet"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.textFields["wallet-address-field"].exists)
+        XCTAssertTrue(app.staticTexts[
+            "0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92"
+        ].exists)
+    }
+
+    @MainActor
+    func testEditAndConfirmedDelete() throws {
+        let app = seededWalletApp()
+        app.launch()
+        app.buttons["edit-wallet-button"].tap()
+
+        let name = app.textFields["wallet-name-field"]
+        name.tap()
+        name.clearAndEnterText("Renamed")
+        app.buttons["wallet-color-amber"].tap()
+        app.buttons["wallet-primary-action"].tap()
+        XCTAssertTrue(app.staticTexts["Renamed"].waitForExistence(timeout: 2))
+
+        app.buttons["edit-wallet-button"].tap()
+        app.buttons["delete-wallet-button"].tap()
+        let deleteConfirmation = app.sheets["Delete wallet?"]
+        XCTAssertTrue(deleteConfirmation.waitForExistence(timeout: 2))
+        XCTAssertTrue(deleteConfirmation.buttons["Delete wallet"].exists)
+        app.otherElements["PopoverDismissRegion"].tap()
+        XCTAssertTrue(name.waitForExistence(timeout: 2))
+
+        app.buttons["delete-wallet-button"].tap()
+        XCTAssertTrue(deleteConfirmation.waitForExistence(timeout: 2))
+        deleteConfirmation.buttons["Delete wallet"].tap()
+        XCTAssertTrue(app.buttons["empty-wallet-card"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testWalletPersistsAcrossRelaunch() throws {
+        let firstLaunch = seededWalletApp()
+        firstLaunch.launch()
+        XCTAssertTrue(firstLaunch.staticTexts["Main Wallet"].waitForExistence(timeout: 2))
+        firstLaunch.terminate()
+
+        let secondLaunch = XCUIApplication()
+        secondLaunch.launchArguments = [
+            "UI_TEST_FIXTURE",
+            "UI_TEST_PERSIST_SAVED_WALLETS"
+        ]
+        secondLaunch.launch()
+
+        XCTAssertTrue(secondLaunch.staticTexts["Main Wallet"].waitForExistence(timeout: 2))
+        XCTAssertTrue(secondLaunch.otherElements["wallet-card"].exists)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
@@ -169,5 +266,23 @@ final class sevenwalletUITests: XCTestCase {
             app.launchArguments = ["UI_TEST_FIXTURE"]
             app.launch()
         }
+    }
+
+    private func seededWalletApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UI_TEST_FIXTURE",
+            "UI_TEST_PERSIST_SAVED_WALLETS",
+            "UI_TEST_CLEAR_SAVED_WALLETS",
+            "UI_TEST_SEED_SAVED_WALLET"
+        ]
+        return app
+    }
+}
+
+private extension XCUIElement {
+    func clearAndEnterText(_ text: String) {
+        typeKey("a", modifierFlags: .command)
+        typeText(text)
     }
 }

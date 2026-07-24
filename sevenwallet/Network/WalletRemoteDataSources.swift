@@ -87,7 +87,10 @@ private struct TokenDTO: Decodable {
     let isNative: Bool
     let price: PriceDTO?
     let logoURI: String?
-    let coinKey: String
+    let change24hPercent: Decimal?
+    let coinKey: String?
+    let marketCapUSD: Decimal?
+    let marketDataUpdatedAt: String?
     let priceUSD: String?
 }
 
@@ -123,6 +126,11 @@ private struct TransferDTO: Decodable {
 private let decimalLocale = Locale(identifier: "en_US_POSIX")
 private let decimalPattern = #"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$"#
 
+private enum ISO8601Formatters {
+    static let standard = ISO8601DateFormatter()
+    static let fractionalSeconds = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+}
+
 private func makeToken(_ payload: TokenDTO) throws -> WalletToken {
     return WalletToken(
         tokenAddress: payload.tokenAddress,
@@ -140,7 +148,10 @@ private func makeToken(_ payload: TokenDTO) throws -> WalletToken {
             )
         },
         logoURL: payload.logoURI.flatMap(URL.init(string:)),
+        change24hPercent: payload.change24hPercent,
         coinKey: payload.coinKey,
+        marketCapUSD: payload.marketCapUSD,
+        marketDataUpdatedAt: try parseDate(payload.marketDataUpdatedAt),
         priceUSD: try parseDecimal(payload.priceUSD)
     )
 }
@@ -160,7 +171,8 @@ private func parseDecimal(_ rawValue: String?) throws -> Decimal? {
 
 private func parseDate(_ rawValue: String?) throws -> Date? {
     guard let rawValue else { return nil }
-    guard let value = ISO8601DateFormatter().date(from: rawValue) else {
+    guard let value = ISO8601Formatters.standard.date(from: rawValue)
+        ?? (try? ISO8601Formatters.fractionalSeconds.parse(rawValue)) else {
         throw APIError.invalidData
     }
     return value

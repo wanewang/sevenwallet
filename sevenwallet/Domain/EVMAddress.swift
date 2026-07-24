@@ -13,8 +13,9 @@ nonisolated struct EVMAddress: RawRepresentable, Codable, Hashable, Sendable {
 
     init(_ raw: String) throws {
         let normalized = raw.lowercased()
-        let body = normalized.dropFirst(2)
-        guard normalized.hasPrefix("0x"), body.count == 40, body.allSatisfy(\.isHexDigit) else {
+        let body = normalized.utf8.dropFirst(2)
+        guard normalized.hasPrefix("0x"), body.count == 40,
+              body.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
             throw Error.invalid(raw)
         }
         rawValue = normalized

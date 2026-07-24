@@ -21,6 +21,73 @@ struct APIClientTests {
         #expect(tokens.first?.priceUSD == Decimal(string: "1926.42"))
     }
 
+    @Test func nativeAcceptsFractionalISO8601Timestamps() async throws {
+        let (client, _) = makeClient(
+            status: 200,
+            body: #"[{"tokenAddress":null,"symbol":"ETH","name":"Ethereum","decimals":18,"rawBalance":"0","balance":"0","isNative":true,"price":{"currency":"usd","value":"1926.42","lastUpdatedAt":"2026-07-23T20:00:14.049803Z"},"logoURI":null,"coinKey":"ETH","priceUSD":"1926.42"}]"#
+        )
+
+        let tokens = try await TokenRemoteDataSource(client: client).fetchNativeTokens()
+        let date = try #require(tokens.first?.price?.lastUpdatedAt)
+
+        #expect(abs(date.timeIntervalSince1970 - 1_784_836_814.049803) < 0.000001)
+    }
+
+    @Test func nativeMapsDocumentedMarketMetadata() async throws {
+        let (client, _) = makeClient(
+            status: 200,
+            body: #"[{"tokenAddress":null,"symbol":"ETH","name":"Ethereum","decimals":18,"rawBalance":"0","balance":"0","isNative":true,"price":null,"logoURI":null,"change24hPercent":1.2345,"coinKey":"ethereum","marketCapUSD":375000000000.1234,"marketDataUpdatedAt":"2026-07-23T20:00:14.049803Z","priceUSD":"1926.42"}]"#
+        )
+
+        let tokens = try await TokenRemoteDataSource(client: client).fetchNativeTokens()
+        let token = try #require(tokens.first)
+        let marketDataUpdatedAt = try #require(token.marketDataUpdatedAt)
+
+        #expect(token.change24hPercent == Decimal(string: "1.2345"))
+        #expect(token.coinKey == "ethereum")
+        #expect(token.marketCapUSD == Decimal(string: "375000000000.1234"))
+        #expect(abs(marketDataUpdatedAt.timeIntervalSince1970 - 1_784_836_814.049803) < 0.000001)
+    }
+
+    @Test func nullAndOmittedMarketMetadataDecodeAsNil() async throws {
+        let (client, _) = makeClient(
+            status: 200,
+            body: #"[{"tokenAddress":null,"symbol":"ETH","name":"Ethereum","decimals":18,"rawBalance":"0","balance":"0","isNative":true,"price":null,"logoURI":null,"change24hPercent":null,"coinKey":null,"marketCapUSD":null,"marketDataUpdatedAt":null,"priceUSD":null},{"tokenAddress":"0x1111111111111111111111111111111111111111","symbol":"TKN","name":"Token","decimals":18,"rawBalance":"1","balance":"0.000000000000000001","isNative":false,"price":null,"logoURI":null,"priceUSD":null}]"#
+        )
+
+        let tokens = try await TokenRemoteDataSource(client: client).fetchNativeTokens()
+
+        #expect(tokens.count == 2)
+        for token in tokens {
+            #expect(token.change24hPercent == nil)
+            #expect(token.coinKey == nil)
+            #expect(token.marketCapUSD == nil)
+            #expect(token.marketDataUpdatedAt == nil)
+        }
+    }
+
+    @Test func marketNumericStringIsInvalidData() async {
+        let (client, _) = makeClient(
+            status: 200,
+            body: #"[{"tokenAddress":null,"symbol":"ETH","name":"Ethereum","decimals":18,"rawBalance":"0","balance":"0","isNative":true,"price":null,"logoURI":null,"change24hPercent":"1.2","coinKey":null,"marketCapUSD":null,"marketDataUpdatedAt":null,"priceUSD":null}]"#
+        )
+
+        await #expect(throws: APIError.invalidData) {
+            try await TokenRemoteDataSource(client: client).fetchNativeTokens()
+        }
+    }
+
+    @Test func malformedMarketTimestampIsInvalidData() async {
+        let (client, _) = makeClient(
+            status: 200,
+            body: #"[{"tokenAddress":null,"symbol":"ETH","name":"Ethereum","decimals":18,"rawBalance":"0","balance":"0","isNative":true,"price":null,"logoURI":null,"change24hPercent":null,"coinKey":null,"marketCapUSD":null,"marketDataUpdatedAt":"not-a-date","priceUSD":null}]"#
+        )
+
+        await #expect(throws: APIError.invalidData) {
+            try await TokenRemoteDataSource(client: client).fetchNativeTokens()
+        }
+    }
+
     @Test func transactionQueryIsEncoded() throws {
         let address = try EVMAddress("0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92")
         let endpoint = APIEndpoint.transactions(address, limit: 100, pageKey: "next key")

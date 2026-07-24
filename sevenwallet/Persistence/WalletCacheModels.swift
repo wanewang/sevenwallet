@@ -27,6 +27,43 @@ final class PortfolioCacheRecord {
 }
 
 @Model
+final class TokenCacheRecord {
+    @Attribute(.unique) var key: String
+    var payload: Data
+
+    init(key: String, payload: Data) {
+        self.key = key
+        self.payload = payload
+    }
+}
+
+@Model
+final class TokenBalanceCacheRecord {
+    @Attribute(.unique) var key: String
+    var walletAddress: String
+    var tokenKey: String
+    var rawBalance: String
+    var balance: Decimal
+    var position: Int
+
+    init(
+        key: String,
+        walletAddress: String,
+        tokenKey: String,
+        rawBalance: String,
+        balance: Decimal,
+        position: Int
+    ) {
+        self.key = key
+        self.walletAddress = walletAddress
+        self.tokenKey = tokenKey
+        self.rawBalance = rawBalance
+        self.balance = balance
+        self.position = position
+    }
+}
+
+@Model
 final class TransactionPageCacheRecord {
     @Attribute(.unique) var key: String
     var address: String
@@ -49,6 +86,10 @@ enum WalletCacheSchema {
     static let models: [any PersistentModel.Type] = [
         NativeTokensCacheRecord.self,
         PortfolioCacheRecord.self,
-        TransactionPageCacheRecord.self
+        TokenCacheRecord.self,
+        TokenBalanceCacheRecord.self,
+        TransactionPageCacheRecord.self,
+        SavedWalletRecord.self,
+        WalletSelectionRecord.self
     ]
 }

@@ -16,10 +16,14 @@ nonisolated struct WalletToken: Codable, Equatable, Identifiable, Sendable {
     let isNative: Bool
     let price: TokenPrice?
     let logoURL: URL?
-    let coinKey: String
+    let change24hPercent: Decimal?
+    let coinKey: String?
+    let marketCapUSD: Decimal?
+    let marketDataUpdatedAt: Date?
     let priceUSD: Decimal?
 
-    var id: String { "\(coinKey):\(tokenAddress?.lowercased() ?? "native")" }
+    var key: String { "\(symbol):\(tokenAddress?.lowercased() ?? "native")" }
+    var id: String { key }
 }
 
 nonisolated struct TokenPortfolio: Codable, Equatable, Sendable {
