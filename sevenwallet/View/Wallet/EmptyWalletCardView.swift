@@ -2,8 +2,18 @@ import SwiftUI
 
 struct EmptyWalletCardView: View {
     let theme: Theme
+    let onAdd: () -> Void
 
     var body: some View {
+        Button(action: onAdd) {
+            emptyCardContent
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add your first wallet")
+        .accessibilityIdentifier("empty-wallet-card")
+    }
+
+    private var emptyCardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("SEVEN WALLET")
                 .font(.subheadline.weight(.medium))
@@ -51,7 +61,5 @@ struct EmptyWalletCardView: View {
                     style: StrokeStyle(lineWidth: 1, dash: [5, 4])
                 )
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("empty-wallet-card")
     }
 }

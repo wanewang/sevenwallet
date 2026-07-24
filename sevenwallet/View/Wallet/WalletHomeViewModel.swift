@@ -12,9 +12,12 @@ final class WalletHomeViewModel {
 
     private let tokenRepository: any TokenRepositoryProtocol
     private let dateProvider: DateProvider
-    private let walletIdentity: WalletIdentity?
+    private var selectedWallet: SavedWallet?
+    private var compatibilityWallet: SavedWallet?
+    private var resourceState = ResourceState.idle
     private var refreshCoordinator = PullRefreshCoordinator()
     private var requestGeneration = 0
+    private var isLoadingEligible = true
 
     init(
         isThemeLight: Bool = false,
@@ -28,16 +31,23 @@ final class WalletHomeViewModel {
         self.dateProvider = dateProvider
         tokens = []
 
-        if let walletName, let walletAddress {
-            let identity = WalletIdentity(name: walletName, address: walletAddress)
-            walletIdentity = identity
+        if let walletName,
+           let walletAddress,
+           let address = try? EVMAddress(walletAddress) {
+            let wallet = SavedWallet(
+                name: walletName,
+                address: address,
+                cardColor: .blue
+            )
+            selectedWallet = nil
+            compatibilityWallet = wallet
             walletCard = WalletCardViewModel(
-                name: identity.name,
-                address: identity.address,
+                wallet: wallet,
                 tokens: []
             )
         } else {
-            walletIdentity = nil
+            selectedWallet = nil
+            compatibilityWallet = nil
             walletCard = nil
         }
     }
@@ -47,15 +57,53 @@ final class WalletHomeViewModel {
     }
 
     func loadTokens() async {
+        guard isLoadingEligible else { return }
+        await consume(policy: .ifExpired)
+    }
+
+    func load(wallet: SavedWallet?) async {
+        updateWallet(wallet)
+        await loadSelectedResource()
+    }
+
+    func updateWallet(_ wallet: SavedWallet?) {
+        let addressChanged = selectedWallet?.address != wallet?.address
+        selectedWallet = wallet
+        compatibilityWallet = nil
+
+        if addressChanged {
+            requestGeneration += 1
+            tokens = []
+            isLoadingTokens = false
+            tokenErrorMessage = nil
+            resourceState = .idle
+        }
+        rebuildWalletCard()
+    }
+
+    func loadSelectedResource() async {
+        guard isLoadingEligible, resourceState == .idle else { return }
         await consume(policy: .ifExpired)
     }
 
     func refreshTokens() async {
+        guard isLoadingEligible else { return }
         await consume(policy: refreshCoordinator.recordPull(at: dateProvider.now()))
     }
 
     func retryTokens() async {
+        guard isLoadingEligible else { return }
         await consume(policy: .ifExpired)
+    }
+
+    func updateLoadingEligibility(_ isEligible: Bool) {
+        guard isLoadingEligible != isEligible else { return }
+        isLoadingEligible = isEligible
+        guard !isEligible else { return }
+
+        requestGeneration += 1
+        isLoadingTokens = false
+        resourceState = .idle
     }
 
     static func sample(tokenSetCopies: Int = 1) -> WalletHomeViewModel {
@@ -114,7 +162,7 @@ final class WalletHomeViewModel {
         copy: Int
     ) -> WalletToken {
         WalletToken(
-            tokenAddress: nil,
+            tokenAddress: copy == 0 ? nil : String(format: "0x%040llx", UInt64(copy)),
             symbol: symbol,
             name: name,
             decimals: 18,
@@ -123,7 +171,10 @@ final class WalletHomeViewModel {
             isNative: true,
             price: nil,
             logoURL: nil,
+            change24hPercent: nil,
             coinKey: "\(coinKey)-\(copy)",
+            marketCapUSD: nil,
+            marketDataUpdatedAt: nil,
             priceUSD: Decimal(string: price)
         )
     }
@@ -131,15 +182,31 @@ final class WalletHomeViewModel {
     private func consume(policy: RefreshPolicy) async {
         requestGeneration += 1
         let generation = requestGeneration
+        resourceState = .loading
         tokenErrorMessage = nil
         defer {
             if generation == requestGeneration {
                 isLoadingTokens = false
+                if resourceState == .loading {
+                    resourceState = .idle
+                }
             }
         }
 
         do {
-            for try await event in tokenRepository.nativeTokens(policy: policy) {
+            let stream: AsyncThrowingStream<
+                RepositoryLoadEvent<[WalletToken]>,
+                Swift.Error
+            >
+            if let selectedWallet {
+                stream = tokenRepository
+                    .portfolio(address: selectedWallet.address, policy: policy)
+                    .mapValues(\.tokens)
+            } else {
+                stream = tokenRepository.nativeTokens(policy: policy)
+            }
+
+            for try await event in stream {
                 guard generation == requestGeneration else { return }
                 switch event {
                 case .cached(let value), .fresh(let value):
@@ -149,6 +216,10 @@ final class WalletHomeViewModel {
                     isLoadingTokens = true
                 }
             }
+            guard generation == requestGeneration, !Task.isCancelled else {
+                return
+            }
+            resourceState = .loaded
         } catch {
             guard generation == requestGeneration, !Task.isCancelled else { return }
             tokenErrorMessage = error.localizedDescription
@@ -158,19 +229,20 @@ final class WalletHomeViewModel {
     private func updateTokens(_ value: [WalletToken]) {
         let rows = value.map { TokenViewModel(token: $0) }
         tokens = rows
-        if let walletIdentity {
-            walletCard = WalletCardViewModel(
-                name: walletIdentity.name,
-                address: walletIdentity.address,
-                tokens: rows
-            )
+        rebuildWalletCard()
+    }
+
+    private func rebuildWalletCard() {
+        walletCard = (selectedWallet ?? compatibilityWallet).map {
+            WalletCardViewModel(wallet: $0, tokens: tokens)
         }
     }
 }
 
-private struct WalletIdentity {
-    let name: String
-    let address: String
+private enum ResourceState: Equatable {
+    case idle
+    case loading
+    case loaded
 }
 
 private struct StaticTokenRepository: TokenRepositoryProtocol {
@@ -190,5 +262,33 @@ private struct StaticTokenRepository: TokenRepositoryProtocol {
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error> {
         AsyncThrowingStream { $0.finish() }
+    }
+}
+
+private extension AsyncThrowingStream {
+    func mapValues<Input, Output>(
+        _ transform: @escaping @Sendable (Input) -> Output
+    ) -> AsyncThrowingStream<RepositoryLoadEvent<Output>, Swift.Error>
+    where Element == RepositoryLoadEvent<Input>, Failure == Swift.Error {
+        AsyncThrowingStream<RepositoryLoadEvent<Output>, Swift.Error> { continuation in
+            let task = Task {
+                do {
+                    for try await event in self {
+                        switch event {
+                        case .cached(let value):
+                            continuation.yield(.cached(transform(value)))
+                        case .refreshing:
+                            continuation.yield(.refreshing)
+                        case .fresh(let value):
+                            continuation.yield(.fresh(transform(value)))
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
     }
 }

@@ -1,11 +1,9 @@
-//
-//  Screen.swift
-//  sevenwallet
-//
-//  Created by Wane on 2026/7/22.
-//
+import Foundation
 
 enum Screen: Hashable {
-    case add, detail, manage
+    case addWallet
+    case editWallet(UUID)
+    case detail
+    case manage
     case token(String)
 }

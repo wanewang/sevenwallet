@@ -4,13 +4,17 @@ import Observation
 @MainActor
 @Observable
 final class WalletCardViewModel {
+    let id: UUID
     let name: String
     let address: String
+    let cardColor: WalletCardColor
     let tokens: [TokenViewModel]
 
-    init(name: String, address: String, tokens: [TokenViewModel]) {
-        self.name = name
-        self.address = address
+    init(wallet: SavedWallet, tokens: [TokenViewModel]) {
+        id = wallet.id
+        name = wallet.name
+        address = wallet.address.rawValue
+        cardColor = wallet.cardColor
         self.tokens = tokens
     }
 
