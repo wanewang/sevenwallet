@@ -54,7 +54,7 @@ struct WalletAPIModelsTests {
             decimals: 18,
             rawBalance: "0",
             balance: 0,
-            isNative: true,
+            isNative: tokenAddress == nil,
             price: nil,
             logoURL: nil,
             change24hPercent: nil,
