@@ -3,7 +3,6 @@ import UIKit
 
 struct WalletCardView: View {
     let viewModel: WalletCardViewModel
-    let theme: Theme
     let onEdit: () -> Void
 
     @State private var didCopy = false

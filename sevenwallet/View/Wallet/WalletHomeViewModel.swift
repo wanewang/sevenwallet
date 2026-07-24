@@ -162,7 +162,7 @@ final class WalletHomeViewModel {
         copy: Int
     ) -> WalletToken {
         WalletToken(
-            tokenAddress: copy == 0 ? nil : String(format: "0x%040llx", Int64(copy)),
+            tokenAddress: copy == 0 ? nil : String(format: "0x%040llx", UInt64(copy)),
             symbol: symbol,
             name: name,
             decimals: 18,

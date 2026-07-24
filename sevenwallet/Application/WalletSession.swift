@@ -71,6 +71,12 @@ final class WalletSession {
         name: String,
         cardColor: WalletCardColor
     ) async throws {
+        guard !isMutatingWallets else {
+            throw WalletSessionError.mutationInProgress
+        }
+        isMutatingWallets = true
+        defer { isMutatingWallets = false }
+
         apply(try await store.update(
             id: id,
             name: name,

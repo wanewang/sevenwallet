@@ -127,6 +127,65 @@ struct WalletSessionTests {
         #expect(session.selectedWallet == wallet)
     }
 
+    @Test func updateCannotStartWhileDeleteIsSuspended() async throws {
+        let wallet = try makeWallet(name: "Main")
+        let store = ScriptedSavedWalletStore(
+            snapshot: .init(wallets: [wallet], selectedWalletID: wallet.id),
+            isDeleteGated: true
+        )
+        let session = WalletSession(
+            store: store,
+            cachePurger: RecordingAddressCachePurger()
+        )
+        await session.load()
+
+        let deletion = Task { try await session.delete(id: wallet.id) }
+        await store.waitUntilDeleteStarted()
+
+        await #expect(throws: WalletSessionError.mutationInProgress) {
+            try await session.update(
+                id: wallet.id,
+                name: "Too Late",
+                cardColor: .pink
+            )
+        }
+
+        await store.releaseDelete()
+        try await deletion.value
+        #expect(session.wallets.isEmpty)
+    }
+
+    @Test func deleteCannotStartWhileUpdateIsSuspended() async throws {
+        let wallet = try makeWallet(name: "Main")
+        let store = ScriptedSavedWalletStore(
+            snapshot: .init(wallets: [wallet], selectedWalletID: wallet.id),
+            isUpdateGated: true
+        )
+        let session = WalletSession(
+            store: store,
+            cachePurger: RecordingAddressCachePurger()
+        )
+        await session.load()
+
+        let update = Task {
+            try await session.update(
+                id: wallet.id,
+                name: "Renamed",
+                cardColor: .pink
+            )
+        }
+        await store.waitUntilUpdateStarted()
+
+        await #expect(throws: WalletSessionError.mutationInProgress) {
+            try await session.delete(id: wallet.id)
+        }
+        #expect(!session.isDeletingWallet)
+
+        await store.releaseUpdate()
+        try await update.value
+        #expect(session.selectedWallet?.name == "Renamed")
+    }
+
     @Test func deletePurgesNormalizedAddressBeforeDeletingIdentity() async throws {
         let recorder = WalletSessionCallRecorder()
         let wallet = try makeWallet(name: "Main")

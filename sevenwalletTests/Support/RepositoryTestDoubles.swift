@@ -34,10 +34,14 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
     private var error: (any Error & Sendable)?
     private let recorder: WalletSessionCallRecorder?
     private let isAddGated: Bool
+    private let isUpdateGated: Bool
     private let isDeleteGated: Bool
     private var addContinuation: CheckedContinuation<Void, Never>?
     private var addWaiters: [CheckedContinuation<Void, Never>] = []
     private var hasStartedAdd = false
+    private var updateContinuation: CheckedContinuation<Void, Never>?
+    private var updateWaiters: [CheckedContinuation<Void, Never>] = []
+    private var hasStartedUpdate = false
     private var deleteContinuation: CheckedContinuation<Void, Never>?
     private var deleteWaiters: [CheckedContinuation<Void, Never>] = []
     private var hasStartedDelete = false
@@ -49,11 +53,13 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
         ),
         recorder: WalletSessionCallRecorder? = nil,
         isAddGated: Bool = false,
+        isUpdateGated: Bool = false,
         isDeleteGated: Bool = false
     ) {
         self.snapshot = snapshot
         self.recorder = recorder
         self.isAddGated = isAddGated
+        self.isUpdateGated = isUpdateGated
         self.isDeleteGated = isDeleteGated
     }
 
@@ -97,6 +103,14 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
         name: String,
         cardColor: WalletCardColor
     ) async throws -> SavedWalletSnapshot {
+        hasStartedUpdate = true
+        updateWaiters.forEach { $0.resume() }
+        updateWaiters = []
+        if isUpdateGated {
+            await withCheckedContinuation { continuation in
+                updateContinuation = continuation
+            }
+        }
         if let error { throw error }
         snapshot = .init(
             wallets: snapshot.wallets.map {
@@ -112,6 +126,18 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
             selectedWalletID: snapshot.selectedWalletID
         )
         return snapshot
+    }
+
+    func waitUntilUpdateStarted() async {
+        guard !hasStartedUpdate else { return }
+        await withCheckedContinuation { continuation in
+            updateWaiters.append(continuation)
+        }
+    }
+
+    func releaseUpdate() {
+        updateContinuation?.resume()
+        updateContinuation = nil
     }
 
     func delete(id: UUID) async throws -> SavedWalletSnapshot {

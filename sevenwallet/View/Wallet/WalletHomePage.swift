@@ -57,7 +57,6 @@ struct WalletHomeView: View {
                             if let walletCard = viewModel.walletCard {
                                 WalletCardView(
                                     viewModel: walletCard,
-                                    theme: theme,
                                     onEdit: { onEditWallet(walletCard.id) }
                                 )
                             } else if hasResolvedWallets,
