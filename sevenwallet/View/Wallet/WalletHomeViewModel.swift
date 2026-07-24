@@ -168,7 +168,7 @@ final class WalletHomeViewModel {
             decimals: 18,
             rawBalance: "0",
             balance: Decimal(string: balance)!,
-            isNative: true,
+            isNative: copy == 0,
             price: nil,
             logoURL: nil,
             change24hPercent: nil,
