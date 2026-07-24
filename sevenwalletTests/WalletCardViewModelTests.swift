@@ -15,7 +15,10 @@ struct WalletCardViewModelTests {
             isNative: true,
             price: nil,
             logoURL: nil,
+            change24hPercent: nil,
             coinKey: "token-\(balance)",
+            marketCapUSD: nil,
+            marketDataUpdatedAt: nil,
             priceUSD: price.flatMap { Decimal(string: $0) }
         ))
     }

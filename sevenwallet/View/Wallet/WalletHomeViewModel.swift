@@ -162,7 +162,7 @@ final class WalletHomeViewModel {
         copy: Int
     ) -> WalletToken {
         WalletToken(
-            tokenAddress: nil,
+            tokenAddress: copy == 0 ? nil : String(format: "0x%040llx", Int64(copy)),
             symbol: symbol,
             name: name,
             decimals: 18,
@@ -171,7 +171,10 @@ final class WalletHomeViewModel {
             isNative: true,
             price: nil,
             logoURL: nil,
+            change24hPercent: nil,
             coinKey: "\(coinKey)-\(copy)",
+            marketCapUSD: nil,
+            marketDataUpdatedAt: nil,
             priceUSD: Decimal(string: price)
         )
     }

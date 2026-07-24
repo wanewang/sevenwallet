@@ -198,28 +198,32 @@ enum AppDependencies {
                 name: "Ether",
                 balance: "0",
                 price: "1926.42",
-                coinKey: "ethereum-\(copy)"
+                coinKey: "ethereum-\(copy)",
+                copy: copy
             ),
             fixtureToken(
                 symbol: "BTC",
                 name: "Bitcoin",
                 balance: "0.0934",
                 price: "104022.48",
-                coinKey: "bitcoin-\(copy)"
+                coinKey: "bitcoin-\(copy)",
+                copy: copy
             ),
             fixtureToken(
                 symbol: "SOL",
                 name: "Solana",
                 balance: "18.42",
                 price: "142.54",
-                coinKey: "solana-\(copy)"
+                coinKey: "solana-\(copy)",
+                copy: copy
             ),
             fixtureToken(
                 symbol: "USDC",
                 name: "USD Coin",
                 balance: "1500",
                 price: "1",
-                coinKey: "usd-coin-\(copy)"
+                coinKey: "usd-coin-\(copy)",
+                copy: copy
             )
         ]
     }
@@ -229,10 +233,11 @@ enum AppDependencies {
         name: String,
         balance: String,
         price: String,
-        coinKey: String
+        coinKey: String,
+        copy: Int
     ) -> WalletToken {
         WalletToken(
-            tokenAddress: nil,
+            tokenAddress: copy == 0 ? nil : String(format: "0x%040llx", Int64(copy)),
             symbol: symbol,
             name: name,
             decimals: 18,
@@ -241,7 +246,10 @@ enum AppDependencies {
             isNative: true,
             price: nil,
             logoURL: nil,
+            change24hPercent: nil,
             coinKey: coinKey,
+            marketCapUSD: nil,
+            marketDataUpdatedAt: nil,
             priceUSD: Decimal(string: price)
         )
     }

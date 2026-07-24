@@ -961,7 +961,10 @@ func makeRepositoryToken(price: String) -> WalletToken {
         isNative: true,
         price: TokenPrice(currency: "USD", value: Decimal(string: price), lastUpdatedAt: nil),
         logoURL: nil,
+        change24hPercent: nil,
         coinKey: "ethereum",
+        marketCapUSD: nil,
+        marketDataUpdatedAt: nil,
         priceUSD: Decimal(string: price)
     )
 }

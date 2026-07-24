@@ -16,11 +16,14 @@ struct TokenViewModelTests {
             isNative: true,
             price: TokenPrice(currency: "USD", value: 2_900, lastUpdatedAt: nil),
             logoURL: URL(string: "https://example.com/eth.png"),
+            change24hPercent: nil,
             coinKey: "ethereum",
+            marketCapUSD: nil,
+            marketDataUpdatedAt: nil,
             priceUSD: Decimal(string: "2936.52")
         ))
 
-        #expect(token.id == "ethereum:native")
+        #expect(token.id == "ETH:native")
         #expect(token.name == "Ether")
         #expect(token.balance == Decimal(string: "4.25"))
         #expect(token.marketPrice == Decimal(string: "2936.52"))
@@ -44,7 +47,10 @@ struct TokenViewModelTests {
             isNative: false,
             price: TokenPrice(currency: "USD", value: Decimal(string: "1.01"), lastUpdatedAt: nil),
             logoURL: nil,
+            change24hPercent: nil,
             coinKey: "usd-coin",
+            marketCapUSD: nil,
+            marketDataUpdatedAt: nil,
             priceUSD: nil
         ))
 
@@ -65,7 +71,10 @@ struct TokenViewModelTests {
             isNative: true,
             price: nil,
             logoURL: nil,
+            change24hPercent: nil,
             coinKey: "new",
+            marketCapUSD: nil,
+            marketDataUpdatedAt: nil,
             priceUSD: nil
         ))
 
@@ -81,6 +90,9 @@ struct TokenViewModelTests {
         let negative = makeToken(dailyChange: -1)
 
         #expect(neutral.dailyChangeColor(theme: .dark) == Theme.dark.fg2)
+        #expect(neutral.formattedDailyChange == "-")
+        #expect(positive.dailyChange == 1)
+        #expect(positive.formattedDailyChange == "+1.00%")
         #expect(positive.dailyChangeColor(theme: .dark) == Theme.pos)
         #expect(negative.dailyChangeColor(theme: .dark) == Theme.neg)
     }
@@ -97,10 +109,12 @@ struct TokenViewModelTests {
                 isNative: true,
                 price: nil,
                 logoURL: nil,
+                change24hPercent: dailyChange,
                 coinKey: "ethereum",
+                marketCapUSD: nil,
+                marketDataUpdatedAt: nil,
                 priceUSD: nil
-            ),
-            dailyChange: dailyChange
+            )
         )
     }
 }

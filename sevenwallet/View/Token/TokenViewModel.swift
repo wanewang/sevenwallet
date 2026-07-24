@@ -13,13 +13,13 @@ final class TokenViewModel: Identifiable {
     let dailyChange: Decimal?
     let logoURL: URL?
 
-    init(token: WalletToken, dailyChange: Decimal? = nil) {
+    init(token: WalletToken) {
         id = token.id
         symbol = token.symbol
         name = token.name
         balance = token.balance
         marketPrice = token.priceUSD ?? token.price?.value
-        self.dailyChange = dailyChange
+        dailyChange = token.change24hPercent
         logoURL = token.logoURL
     }
 

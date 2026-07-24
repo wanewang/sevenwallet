@@ -24,4 +24,44 @@ struct WalletAPIModelsTests {
     @Test func invalidAddressHasConciseDescription() {
         #expect(EVMAddress.Error.invalid("private address").localizedDescription == "Wallet address is invalid.")
     }
+
+    @Test func contractTokenKeyUsesSymbolAndNormalizedAddress() {
+        let token = makeToken(symbol: "USDC", tokenAddress: "0xABC", coinKey: "usd-coin")
+
+        #expect(token.key == "USDC:0xabc")
+        #expect(token.id == token.key)
+    }
+
+    @Test func nativeTokenKeyUsesNativeMarker() {
+        let token = makeToken(symbol: "ETH", tokenAddress: nil, coinKey: nil)
+
+        #expect(token.key == "ETH:native")
+        #expect(token.id == "ETH:native")
+    }
+
+    @Test func coinKeyDoesNotAffectTokenKey() {
+        let first = makeToken(symbol: "ETH", tokenAddress: nil, coinKey: "ethereum")
+        let second = makeToken(symbol: "ETH", tokenAddress: nil, coinKey: nil)
+
+        #expect(first.key == second.key)
+    }
+
+    private func makeToken(symbol: String, tokenAddress: String?, coinKey: String?) -> WalletToken {
+        WalletToken(
+            tokenAddress: tokenAddress,
+            symbol: symbol,
+            name: "Ethereum",
+            decimals: 18,
+            rawBalance: "0",
+            balance: 0,
+            isNative: true,
+            price: nil,
+            logoURL: nil,
+            change24hPercent: nil,
+            coinKey: coinKey,
+            marketCapUSD: nil,
+            marketDataUpdatedAt: nil,
+            priceUSD: nil
+        )
+    }
 }
