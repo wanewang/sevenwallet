@@ -9,10 +9,13 @@ final class WalletHomeViewModel {
     private(set) var isLoadingTokens = false
     private(set) var tokenErrorMessage: String?
     private(set) var walletCard: WalletCardViewModel?
+    private(set) var walletSnapshot = SavedWalletSnapshot(
+        wallets: [],
+        selectedWalletID: nil
+    )
 
     private let tokenRepository: any TokenRepositoryProtocol
     private let dateProvider: DateProvider
-    private var selectedWallet: SavedWallet?
     private var compatibilityWallet: SavedWallet?
     private var resourceState = ResourceState.idle
     private var refreshCoordinator = PullRefreshCoordinator()
@@ -39,17 +42,19 @@ final class WalletHomeViewModel {
                 address: address,
                 cardColor: .blue
             )
-            selectedWallet = nil
             compatibilityWallet = wallet
             walletCard = WalletCardViewModel(
                 wallet: wallet,
                 tokens: []
             )
         } else {
-            selectedWallet = nil
             compatibilityWallet = nil
             walletCard = nil
         }
+    }
+
+    private var selectedWallet: SavedWallet? {
+        walletSnapshot.selectedWallet
     }
 
     func toggleTheme() {
@@ -67,8 +72,18 @@ final class WalletHomeViewModel {
     }
 
     func updateWallet(_ wallet: SavedWallet?) {
-        let addressChanged = selectedWallet?.address != wallet?.address
-        selectedWallet = wallet
+        updateWallets(
+            SavedWalletSnapshot(
+                wallets: wallet.map { [$0] } ?? [],
+                selectedWalletID: wallet?.id
+            )
+        )
+    }
+
+    func updateWallets(_ snapshot: SavedWalletSnapshot) {
+        let addressChanged =
+            selectedWallet?.address != snapshot.selectedWallet?.address
+        walletSnapshot = snapshot
         compatibilityWallet = nil
 
         if addressChanged {

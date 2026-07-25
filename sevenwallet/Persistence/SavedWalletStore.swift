@@ -8,11 +8,19 @@ nonisolated struct SavedWalletSnapshot: Equatable, Sendable {
     var selectedWallet: SavedWallet? {
         wallets.first { $0.id == selectedWalletID } ?? wallets.first
     }
+
+    func selecting(id: UUID) throws -> SavedWalletSnapshot {
+        guard wallets.contains(where: { $0.id == id }) else {
+            throw SavedWalletStoreError.walletNotFound
+        }
+        return SavedWalletSnapshot(wallets: wallets, selectedWalletID: id)
+    }
 }
 
 protocol SavedWalletStoreProtocol: Sendable {
     func loadSnapshot() async throws -> SavedWalletSnapshot
     func addAndSelect(_ wallet: SavedWallet) async throws -> SavedWalletSnapshot
+    func select(id: UUID) async throws -> SavedWalletSnapshot
     func update(
         id: UUID,
         name: String,
@@ -53,6 +61,25 @@ actor SavedWalletStore: SavedWalletStoreProtocol {
         do {
             modelContext.insert(SavedWalletRecord(wallet: wallet))
             try setSelection(wallet.id)
+            let snapshot = try snapshot()
+            try modelContext.save()
+            return snapshot
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+
+    func select(id: UUID) throws -> SavedWalletSnapshot {
+        var descriptor = FetchDescriptor<SavedWalletRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        guard try modelContext.fetch(descriptor).first != nil else {
+            throw SavedWalletStoreError.walletNotFound
+        }
+        do {
+            try setSelection(id)
             let snapshot = try snapshot()
             try modelContext.save()
             return snapshot

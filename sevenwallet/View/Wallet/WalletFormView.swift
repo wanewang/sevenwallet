@@ -142,7 +142,9 @@ struct WalletFormView: View {
                 text: Binding(
                     get: { viewModel.name },
                     set: {
-                        viewModel.didInteractWithName = true
+                        if $0 != viewModel.name {
+                            viewModel.didInteractWithName = true
+                        }
                         viewModel.setName($0)
                     }
                 )
@@ -167,7 +169,9 @@ struct WalletFormView: View {
                     text: Binding(
                         get: { viewModel.address },
                         set: {
-                            viewModel.didInteractWithAddress = true
+                            if $0 != viewModel.address {
+                                viewModel.didInteractWithAddress = true
+                            }
                             viewModel.address = $0
                         }
                     )

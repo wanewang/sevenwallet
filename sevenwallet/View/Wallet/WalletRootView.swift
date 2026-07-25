@@ -15,14 +15,20 @@ struct WalletRootView: View {
         NavigationStack(path: $path) {
             WalletHomeView(
                 viewModel: homeViewModel,
-                wallet: session.selectedWallet,
                 walletLoadError: session.loadErrorMessage,
+                walletSelectionError: session.selectionErrorMessage,
                 hasResolvedWallets: hasResolvedWallets,
                 isWalletDeletionInProgress: session.isDeletingWallet,
                 onRetryWallets: { Task { await loadWallets() } },
+                onSelectWallet: { id in
+                    Task { try? await session.select(id: id) }
+                },
                 onAddWallet: { path.append(.addWallet) },
                 onEditWallet: { path.append(.editWallet($0)) }
             )
+            .onChange(of: session.walletSnapshot, initial: true) { _, snapshot in
+                homeViewModel.updateWallets(snapshot)
+            }
             .navigationDestination(for: Screen.self) { screen in
                 switch screen {
                 case .addWallet:
@@ -62,6 +68,7 @@ struct WalletRootView: View {
     private func loadWallets() async {
         hasResolvedWallets = false
         await session.load()
+        homeViewModel.updateWallets(session.walletSnapshot)
         hasResolvedWallets = true
     }
 }

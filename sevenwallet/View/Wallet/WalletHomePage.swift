@@ -3,32 +3,40 @@ import SwiftUI
 @MainActor
 struct WalletHomeView: View {
     @State private var viewModel: WalletHomeViewModel
-    let wallet: SavedWallet?
+    @State private var showsWalletSelector = false
     let walletLoadError: String?
+    let walletSelectionError: String?
     let hasResolvedWallets: Bool
     let isWalletDeletionInProgress: Bool
     let onRetryWallets: () -> Void
+    let onSelectWallet: (UUID) -> Void
     let onAddWallet: () -> Void
     let onEditWallet: (UUID) -> Void
 
     init(
         viewModel: WalletHomeViewModel? = nil,
-        wallet: SavedWallet? = nil,
         walletLoadError: String? = nil,
+        walletSelectionError: String? = nil,
         hasResolvedWallets: Bool = true,
         isWalletDeletionInProgress: Bool = false,
         onRetryWallets: @escaping () -> Void = {},
+        onSelectWallet: @escaping (UUID) -> Void = { _ in },
         onAddWallet: @escaping () -> Void = {},
         onEditWallet: @escaping (UUID) -> Void = { _ in }
     ) {
         _viewModel = State(initialValue: viewModel ?? .sample())
-        self.wallet = wallet
         self.walletLoadError = walletLoadError
+        self.walletSelectionError = walletSelectionError
         self.hasResolvedWallets = hasResolvedWallets
         self.isWalletDeletionInProgress = isWalletDeletionInProgress
         self.onRetryWallets = onRetryWallets
+        self.onSelectWallet = onSelectWallet
         self.onAddWallet = onAddWallet
         self.onEditWallet = onEditWallet
+    }
+
+    private var wallet: SavedWallet? {
+        viewModel.walletSnapshot.selectedWallet
     }
 
     private var theme: Theme {
@@ -43,6 +51,7 @@ struct WalletHomeView: View {
                 WalletTopBar(
                     theme: theme,
                     isThemeLight: viewModel.isThemeLight,
+                    onShowWalletSelector: { setWalletSelector(visible: true) },
                     onToggleTheme: viewModel.toggleTheme
                 )
 
@@ -51,6 +60,11 @@ struct WalletHomeView: View {
                         Section {
                             if let walletLoadError {
                                 walletStorageError(walletLoadError)
+                                    .padding(.bottom, 12)
+                            }
+
+                            if let walletSelectionError {
+                                walletSelectionErrorMessage(walletSelectionError)
                                     .padding(.bottom, 12)
                             }
 
@@ -104,9 +118,17 @@ struct WalletHomeView: View {
                     await viewModel.refreshTokens()
                 }
             }
-        }
-        .onChange(of: wallet, initial: true) { _, wallet in
-            viewModel.updateWallet(wallet)
+
+            if showsWalletSelector {
+                WalletSelectorView(
+                    theme: theme,
+                    snapshot: viewModel.walletSnapshot,
+                    onSelectWallet: onSelectWallet,
+                    onAddWallet: onAddWallet,
+                    onDismiss: { setWalletSelector(visible: false) }
+                )
+                .zIndex(1)
+            }
         }
         .onChange(of: walletLoadKey.canLoad, initial: true) { _, canLoad in
             viewModel.updateLoadingEligibility(canLoad)
@@ -114,7 +136,6 @@ struct WalletHomeView: View {
         .task(id: walletLoadKey) {
             viewModel.updateLoadingEligibility(walletLoadKey.canLoad)
             guard walletLoadKey.canLoad else { return }
-            viewModel.updateWallet(wallet)
             await viewModel.loadSelectedResource()
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -132,6 +153,20 @@ struct WalletHomeView: View {
                 && !isWalletDeletionInProgress,
             address: wallet?.address
         )
+    }
+
+    private func setWalletSelector(visible: Bool) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showsWalletSelector = visible
+        }
+    }
+
+    private func walletSelectionErrorMessage(_ message: String) -> some View {
+        Label(message, systemImage: "exclamationmark.circle")
+            .font(.caption)
+            .foregroundStyle(Theme.warn)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("wallet-selection-error-message")
     }
 
     private func walletStorageError(_ message: String) -> some View {

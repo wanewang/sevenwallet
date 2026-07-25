@@ -42,6 +42,80 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testWalletSelectorSwitchesWallets() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_MULTIPLE_WALLETS"]
+        app.launch()
+
+        let selector = app.buttons["wallet-selector-button"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 2))
+        selector.tap()
+
+        let first = app.buttons[
+            "wallet-selector-row-00000000-0000-0000-0000-000000000001"
+        ]
+        let second = app.buttons[
+            "wallet-selector-row-00000000-0000-0000-0000-000000000002"
+        ]
+        XCTAssertTrue(first.waitForExistence(timeout: 2))
+        XCTAssertTrue(second.waitForExistence(timeout: 2))
+        XCTAssertEqual(first.value as? String, "Selected")
+
+        second.tap()
+        let menu = app.staticTexts["YOUR WALLETS"]
+        let menuDismissed = expectation(
+            for: NSPredicate(format: "exists == false"),
+            evaluatedWith: menu
+        )
+        wait(for: [menuDismissed], timeout: 2)
+        selector.tap()
+
+        XCTAssertTrue(second.waitForExistence(timeout: 2))
+        XCTAssertEqual(second.value as? String, "Selected")
+    }
+
+    @MainActor
+    func testWalletSelectorScrimIsAccessibleAndDismisses() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_MULTIPLE_WALLETS"]
+        app.launch()
+
+        let selector = app.buttons["wallet-selector-button"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 2))
+        selector.tap()
+
+        let dismiss = app.buttons["wallet-selector-dismiss-button"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 2))
+        dismiss.tap()
+
+        let menu = app.staticTexts["YOUR WALLETS"]
+        let menuDismissed = expectation(
+            for: NSPredicate(format: "exists == false"),
+            evaluatedWith: menu
+        )
+        wait(for: [menuDismissed], timeout: 2)
+    }
+
+    @MainActor
+    func testWalletSelectorAddWalletOpensForm() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_MULTIPLE_WALLETS"]
+        app.launch()
+
+        let selector = app.buttons["wallet-selector-button"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 2))
+        selector.tap()
+        XCTAssertTrue(
+            app.staticTexts["YOUR WALLETS"].waitForExistence(timeout: 2)
+        )
+
+        app.buttons["selector-add-wallet-button"].tap()
+        XCTAssertTrue(
+            app.textFields["wallet-name-field"].waitForExistence(timeout: 2)
+        )
+    }
+
+    @MainActor
     func testNoWalletHomeContent() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UI_TEST_FIXTURE"]
@@ -160,6 +234,29 @@ final class sevenwalletUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(emptyHeight, 212)
         XCTAssertGreaterThanOrEqual(populatedHeight, 212)
         XCTAssertEqual(emptyHeight, populatedHeight, accuracy: 1)
+    }
+
+    @MainActor
+    func testAddWalletFocusDoesNotShowValidationErrors() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE"]
+        app.launch()
+
+        let emptyCard = app.buttons["empty-wallet-card"]
+        XCTAssertTrue(emptyCard.waitForExistence(timeout: 2))
+        emptyCard.tap()
+
+        let name = app.textFields["wallet-name-field"]
+        let address = app.textFields["wallet-address-field"]
+        XCTAssertTrue(name.waitForExistence(timeout: 2))
+
+        name.tap()
+        XCTAssertFalse(app.staticTexts["Enter a wallet name."].exists)
+        XCTAssertFalse(app.staticTexts["Enter a valid Ethereum address."].exists)
+
+        address.tap()
+        XCTAssertFalse(app.staticTexts["Enter a wallet name."].exists)
+        XCTAssertFalse(app.staticTexts["Enter a valid Ethereum address."].exists)
     }
 
     @MainActor
