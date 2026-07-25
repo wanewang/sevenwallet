@@ -75,6 +75,28 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testWalletSelectorScrimIsAccessibleAndDismisses() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_MULTIPLE_WALLETS"]
+        app.launch()
+
+        let selector = app.buttons["wallet-selector-button"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 2))
+        selector.tap()
+
+        let dismiss = app.buttons["wallet-selector-dismiss-button"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 2))
+        dismiss.tap()
+
+        let menu = app.staticTexts["YOUR WALLETS"]
+        let menuDismissed = expectation(
+            for: NSPredicate(format: "exists == false"),
+            evaluatedWith: menu
+        )
+        wait(for: [menuDismissed], timeout: 2)
+    }
+
+    @MainActor
     func testWalletSelectorAddWalletOpensForm() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_MULTIPLE_WALLETS"]

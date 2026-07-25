@@ -9,9 +9,13 @@ struct WalletSelectorView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color.black.opacity(0.5)
-                .ignoresSafeArea()
-                .onTapGesture(perform: onDismiss)
+            Button(action: onDismiss) {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss wallet selector")
+            .accessibilityIdentifier("wallet-selector-dismiss-button")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("YOUR WALLETS")

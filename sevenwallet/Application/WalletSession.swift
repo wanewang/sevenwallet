@@ -74,7 +74,10 @@ final class WalletSession {
     }
 
     func select(id: UUID) async throws {
-        guard selectedWallet?.id != id else { return }
+        guard selectedWallet?.id != id else {
+            selectionErrorMessage = nil
+            return
+        }
         guard !isMutatingWallets else {
             let error = WalletSessionError.mutationInProgress
             selectionErrorMessage = error.errorDescription

@@ -97,6 +97,38 @@ struct WalletSessionTests {
         #expect(session.selectedWallet == second)
     }
 
+    @Test func selectingCurrentWalletClearsSelectionError() async throws {
+        let first = try makeWallet(name: "First")
+        let second = SavedWallet(
+            name: "Second",
+            address: try EVMAddress(
+                "0x0000000000000000000000000000000000000002"
+            ),
+            cardColor: .purple
+        )
+        let store = ScriptedSavedWalletStore(
+            snapshot: .init(
+                wallets: [first, second],
+                selectedWalletID: first.id
+            )
+        )
+        let session = WalletSession(
+            store: store,
+            cachePurger: RecordingAddressCachePurger()
+        )
+        await session.load()
+        await store.setError(RepositoryTestError.storageWriteFailure)
+
+        await #expect(throws: RepositoryTestError.storageWriteFailure) {
+            try await session.select(id: second.id)
+        }
+        #expect(session.selectionErrorMessage == "Unable to switch wallet.")
+
+        try await session.select(id: first.id)
+
+        #expect(session.selectionErrorMessage == nil)
+    }
+
     @Test func addResumesPortfolioBeforePublishingSnapshot() async throws {
         let address = try makeWallet(name: "Reference").address
         let store = ScriptedSavedWalletStore()
