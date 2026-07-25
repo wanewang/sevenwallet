@@ -123,7 +123,6 @@ final class sevenwalletUITests: XCTestCase {
 
         openWalletList(in: app)
 
-        XCTAssertFalse(app.staticTexts["YOUR WALLETS"].exists)
         let first = app.buttons[
             "wallet-list-row-00000000-0000-0000-0000-000000000001"
         ]
@@ -459,6 +458,10 @@ final class sevenwalletUITests: XCTestCase {
         XCTAssertTrue(walletList.waitForExistence(timeout: 2))
         walletList.tap()
 
+        XCTAssertTrue(
+            app.staticTexts["YOUR WALLETS"]
+                .waitForNonExistence(timeout: 2)
+        )
         XCTAssertTrue(
             walletListTitle(in: app).waitForExistence(timeout: 2)
         )

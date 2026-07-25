@@ -151,6 +151,7 @@ struct WalletSelectorView: View {
                 if let trailingIcon {
                     Image(systemName: trailingIcon)
                         .font(.system(size: 12, weight: .semibold))
+                        .accessibilityHidden(true)
                 }
             }
             .font(.system(size: 14, weight: .semibold))
