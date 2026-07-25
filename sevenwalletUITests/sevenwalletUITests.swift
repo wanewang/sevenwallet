@@ -58,7 +58,7 @@ final class sevenwalletUITests: XCTestCase {
             "wallet-selector-row-00000000-0000-0000-0000-000000000002"
         ]
         XCTAssertTrue(first.waitForExistence(timeout: 2))
-        XCTAssertTrue(second.exists)
+        XCTAssertTrue(second.waitForExistence(timeout: 2))
         XCTAssertEqual(first.value as? String, "Selected")
 
         second.tap()
