@@ -10,7 +10,7 @@ struct WalletListView: View {
     let theme: Theme
     let onBack: () -> Void
     let onAddWallet: () -> Void
-    let onSelectWallet: (UUID) async -> Bool
+    let onSelectWallet: (UUID) async -> Void
 
     init(
         snapshot: SavedWalletSnapshot,
@@ -19,7 +19,7 @@ struct WalletListView: View {
         tokenRepository: any TokenRepositoryProtocol,
         onBack: @escaping () -> Void,
         onAddWallet: @escaping () -> Void,
-        onSelectWallet: @escaping (UUID) async -> Bool
+        onSelectWallet: @escaping (UUID) async -> Void
     ) {
         _viewModel = State(initialValue: WalletListViewModel(
             tokenRepository: tokenRepository
@@ -70,9 +70,7 @@ struct WalletListView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .tint(Theme.accent)
-        .task(id: snapshot.wallets) {
-            await viewModel.load(snapshot: snapshot)
-        }
+        .onAppear { viewModel.update(snapshot: snapshot) }
         .onChange(of: snapshot) { _, newSnapshot in
             viewModel.update(snapshot: newSnapshot)
         }
@@ -178,7 +176,7 @@ struct WalletListView: View {
             guard selectingWalletID == nil else { return }
             selectingWalletID = row.id
             Task {
-                _ = await onSelectWallet(row.id)
+                await onSelectWallet(row.id)
                 selectingWalletID = nil
             }
         } label: {

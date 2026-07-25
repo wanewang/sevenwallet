@@ -81,7 +81,7 @@ struct WalletListViewModelTests {
 
         #expect(viewModel.rows.first?.formattedTotalValue == "$200.00")
         #expect(viewModel.rows.first?.isLoading == false)
-        #expect(viewModel.rows.first?.errorMessage == nil)
+        #expect(viewModel.rows.first?.hasFailed == false)
     }
 
     @Test
@@ -116,14 +116,14 @@ struct WalletListViewModelTests {
         ))
 
         #expect(viewModel.rows[0].formattedTotalValue == "$100.00")
-        #expect(viewModel.rows[0].errorMessage == "Unable to load tokens.")
+        #expect(viewModel.rows[0].hasFailed)
         #expect(viewModel.rows[1].formattedTotalValue == "$200.00")
-        #expect(viewModel.rows[1].errorMessage == nil)
+        #expect(!viewModel.rows[1].hasFailed)
         #expect(viewModel.hasPortfolioFailures)
     }
 
     @Test
-    func failedRowCanRetryWithNormalCachePolicy() async throws {
+    func failedRowRetriesWithIfExpiredPolicy() async throws {
         let wallet = try makeWallet(index: 1, name: "Main", color: .blue)
         let repository = PortfolioTokenRepositorySpy(
             portfolioRequestScripts: [
@@ -213,6 +213,7 @@ struct WalletListViewModelTests {
         for _ in 0..<100 where repository.requestedPortfolioAddresses.count < count {
             await Task.yield()
         }
+        #expect(repository.requestedPortfolioAddresses.count == count)
     }
 
     private func waitForTotal(
@@ -222,6 +223,7 @@ struct WalletListViewModelTests {
         for _ in 0..<100 where viewModel.rows.first?.formattedTotalValue != total {
             await Task.yield()
         }
+        #expect(viewModel.rows.first?.formattedTotalValue == total)
     }
 
     private func makeWallet(

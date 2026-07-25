@@ -174,6 +174,46 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testWalletListResumesLoadingAfterReturningFromAddWallet() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "UI_TEST_FIXTURE",
+            "UI_TEST_MULTIPLE_WALLETS",
+            "UI_TEST_HOLD_TOKEN_LOADING"
+        ]
+        app.launch()
+
+        openWalletList(in: app)
+
+        let row = app.buttons[
+            "wallet-list-row-00000000-0000-0000-0000-000000000001"
+        ]
+        XCTAssertTrue(row.waitForExistence(timeout: 2))
+        XCTAssertTrue(row.label.contains("Loading"))
+
+        let add = app.buttons["wallet-list-add-button"]
+        XCTAssertTrue(add.waitForExistence(timeout: 2))
+        add.tap()
+        XCTAssertTrue(
+            app.textFields["wallet-name-field"].waitForExistence(timeout: 2)
+        )
+
+        let formBack = app.buttons.matching(
+            NSPredicate(
+                format: "label == %@ AND identifier != %@",
+                "Back",
+                "wallet-list-back-button"
+            )
+        ).firstMatch
+        XCTAssertTrue(formBack.waitForExistence(timeout: 2))
+        formBack.tap()
+
+        XCTAssertTrue(walletListTitle(in: app).waitForExistence(timeout: 2))
+        XCTAssertTrue(row.waitForExistence(timeout: 2))
+        XCTAssertTrue(row.label.contains("Loading"))
+    }
+
+    @MainActor
     func testEmptyWalletListPointsToAddButton() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UI_TEST_FIXTURE"]

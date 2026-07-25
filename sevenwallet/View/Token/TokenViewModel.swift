@@ -18,7 +18,7 @@ final class TokenViewModel: Identifiable {
         symbol = token.symbol
         name = token.name
         balance = token.balance
-        marketPrice = token.priceUSD ?? token.price?.value
+        marketPrice = token.marketPriceUSD
         dailyChange = token.change24hPercent
         logoURL = token.logoURL
     }

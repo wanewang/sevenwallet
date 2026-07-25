@@ -7,7 +7,7 @@ struct WalletListRowViewModel: Identifiable, Equatable {
     var totalValue: Decimal?
     var assetCount: Int?
     var isLoading: Bool
-    var errorMessage: String?
+    var hasFailed: Bool
 
     var id: UUID { wallet.id }
 
@@ -37,7 +37,7 @@ final class WalletListViewModel {
     private(set) var selectedWalletID: UUID?
 
     var hasPortfolioFailures: Bool {
-        rows.contains { $0.errorMessage != nil }
+        rows.contains { $0.hasFailed }
     }
 
     private let tokenRepository: any TokenRepositoryProtocol
@@ -61,10 +61,8 @@ final class WalletListViewModel {
             uniqueKeysWithValues: snapshot.wallets.map { ($0.id, $0) }
         )
         for row in rows {
-            guard let wallet = walletsByID[row.id],
-                  wallet.address == row.wallet.address else {
+            if walletsByID[row.id]?.address != row.wallet.address {
                 invalidateRequest(for: row.id)
-                continue
             }
         }
 
@@ -72,24 +70,23 @@ final class WalletListViewModel {
             uniqueKeysWithValues: rows.map { ($0.id, $0) }
         )
         rows = snapshot.wallets.map { wallet in
-            guard var row = existingRows[wallet.id],
+            guard let row = existingRows[wallet.id],
                   row.wallet.address == wallet.address else {
                 return WalletListRowViewModel(
                     wallet: wallet,
                     totalValue: nil,
                     assetCount: nil,
                     isLoading: false,
-                    errorMessage: nil
+                    hasFailed: false
                 )
             }
-            row = WalletListRowViewModel(
+            return WalletListRowViewModel(
                 wallet: wallet,
                 totalValue: row.totalValue,
                 assetCount: row.assetCount,
                 isLoading: row.isLoading,
-                errorMessage: row.errorMessage
+                hasFailed: row.hasFailed
             )
-            return row
         }
         selectedWalletID = snapshot.selectedWalletID
 
@@ -99,9 +96,7 @@ final class WalletListViewModel {
     }
 
     func retryFailed() async {
-        let failedIDs = rows.compactMap { row in
-            row.errorMessage == nil ? nil : row.id
-        }
+        let failedIDs = rows.compactMap { $0.hasFailed ? $0.id : nil }
         for id in failedIDs {
             startPortfolioLoad(for: id)
         }
@@ -126,7 +121,7 @@ final class WalletListViewModel {
     private func shouldStartInitialLoad(_ row: WalletListRowViewModel) -> Bool {
         portfolioTasks[row.id] == nil
             && row.totalValue == nil
-            && row.errorMessage == nil
+            && !row.hasFailed
             && !row.isLoading
     }
 
@@ -139,7 +134,7 @@ final class WalletListViewModel {
         let address = row.wallet.address
         updateRow(id: id) {
             $0.isLoading = true
-            $0.errorMessage = nil
+            $0.hasFailed = false
         }
         portfolioTasks[id] = Task { [weak self] in
             guard let self else { return }
@@ -190,7 +185,7 @@ final class WalletListViewModel {
             updateRow(id: walletID) {
                 $0.isLoading = false
                 if !receivedPortfolio, $0.totalValue == nil {
-                    $0.errorMessage = "Unable to load wallet balances."
+                    $0.hasFailed = true
                 }
             }
         } catch is CancellationError {
@@ -208,7 +203,7 @@ final class WalletListViewModel {
             ) else { return }
             updateRow(id: walletID) {
                 $0.isLoading = false
-                $0.errorMessage = error.localizedDescription
+                $0.hasFailed = true
             }
         }
 
@@ -226,12 +221,12 @@ final class WalletListViewModel {
         walletID: UUID
     ) {
         let total = portfolio.tokens.reduce(Decimal.zero) { result, token in
-            result + token.balance * (token.priceUSD ?? token.price?.value ?? 0)
+            result + token.balance * (token.marketPriceUSD ?? 0)
         }
         updateRow(id: walletID) {
             $0.totalValue = total
             $0.assetCount = portfolio.tokens.count
-            $0.errorMessage = nil
+            $0.hasFailed = false
         }
     }
 

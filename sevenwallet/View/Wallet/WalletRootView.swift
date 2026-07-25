@@ -57,9 +57,9 @@ struct WalletRootView: View {
                             do {
                                 try await session.select(id: id)
                                 path.removeAll()
-                                return true
                             } catch {
-                                return false
+                                // The list stays open and renders
+                                // session.selectionErrorMessage.
                             }
                         }
                     )
