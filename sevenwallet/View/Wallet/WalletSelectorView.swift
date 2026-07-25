@@ -26,10 +26,19 @@ struct WalletSelectorView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(theme.fg2)
                         .padding(12)
-                }
-
-                ForEach(snapshot.wallets) { savedWallet in
-                    walletRow(savedWallet)
+                } else {
+                    ScrollView(.vertical) {
+                        LazyVStack(spacing: 2) {
+                            ForEach(snapshot.wallets) { savedWallet in
+                                walletRow(savedWallet)
+                            }
+                        }
+                    }
+                    .scrollIndicators(
+                        snapshot.wallets.count > 5 ? .visible : .hidden
+                    )
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(height: walletListHeight)
                 }
 
                 Divider()
@@ -69,6 +78,12 @@ struct WalletSelectorView: View {
             .padding(.top, 80)
         }
         .transition(.opacity)
+    }
+
+    private var walletListHeight: CGFloat {
+        let visibleCount = min(snapshot.wallets.count, 5)
+        let rowSpacing = max(visibleCount - 1, 0) * 2
+        return CGFloat(visibleCount * 50 + rowSpacing)
     }
 
     private func walletRow(_ savedWallet: SavedWallet) -> some View {

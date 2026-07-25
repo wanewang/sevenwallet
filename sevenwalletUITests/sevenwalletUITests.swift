@@ -215,6 +215,29 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testAddWalletFocusDoesNotShowValidationErrors() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE"]
+        app.launch()
+
+        let emptyCard = app.buttons["empty-wallet-card"]
+        XCTAssertTrue(emptyCard.waitForExistence(timeout: 2))
+        emptyCard.tap()
+
+        let name = app.textFields["wallet-name-field"]
+        let address = app.textFields["wallet-address-field"]
+        XCTAssertTrue(name.waitForExistence(timeout: 2))
+
+        name.tap()
+        XCTAssertFalse(app.staticTexts["Enter a wallet name."].exists)
+        XCTAssertFalse(app.staticTexts["Enter a valid Ethereum address."].exists)
+
+        address.tap()
+        XCTAssertFalse(app.staticTexts["Enter a wallet name."].exists)
+        XCTAssertFalse(app.staticTexts["Enter a valid Ethereum address."].exists)
+    }
+
+    @MainActor
     func testAddWalletFlow() throws {
         let app = XCUIApplication()
         app.launchArguments = [
