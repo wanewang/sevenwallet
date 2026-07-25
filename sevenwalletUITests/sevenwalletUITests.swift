@@ -116,6 +116,79 @@ final class sevenwalletUITests: XCTestCase {
     }
 
     @MainActor
+    func testWalletListOpensAndSwitchesWallets() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_MULTIPLE_WALLETS"]
+        app.launch()
+
+        openWalletList(in: app)
+
+        XCTAssertFalse(app.staticTexts["YOUR WALLETS"].exists)
+        let first = app.buttons[
+            "wallet-list-row-00000000-0000-0000-0000-000000000001"
+        ]
+        let second = app.buttons[
+            "wallet-list-row-00000000-0000-0000-0000-000000000002"
+        ]
+        XCTAssertTrue(first.waitForExistence(timeout: 2))
+        XCTAssertTrue(second.waitForExistence(timeout: 2))
+        XCTAssertTrue(first.isSelected)
+        XCTAssertFalse(second.isSelected)
+
+        second.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Savings Wallet"].waitForExistence(timeout: 2)
+        )
+        XCTAssertFalse(walletListTitle(in: app).exists)
+
+        openWalletList(in: app)
+        XCTAssertTrue(second.waitForExistence(timeout: 2))
+        XCTAssertTrue(second.isSelected)
+        XCTAssertFalse(first.isSelected)
+    }
+
+    @MainActor
+    func testWalletListBackAndAddNavigation() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE", "UI_TEST_MULTIPLE_WALLETS"]
+        app.launch()
+
+        openWalletList(in: app)
+        let back = app.buttons["wallet-list-back-button"]
+        XCTAssertTrue(back.waitForExistence(timeout: 2))
+        back.tap()
+
+        XCTAssertTrue(
+            app.buttons["wallet-selector-button"].waitForExistence(timeout: 2)
+        )
+        XCTAssertFalse(walletListTitle(in: app).exists)
+
+        openWalletList(in: app)
+        let add = app.buttons["wallet-list-add-button"]
+        XCTAssertTrue(add.waitForExistence(timeout: 2))
+        add.tap()
+
+        XCTAssertTrue(
+            app.textFields["wallet-name-field"].waitForExistence(timeout: 2)
+        )
+    }
+
+    @MainActor
+    func testEmptyWalletListPointsToAddButton() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UI_TEST_FIXTURE"]
+        app.launch()
+
+        openWalletList(in: app)
+
+        let emptyState = app.staticTexts["wallet-list-empty-state"]
+        XCTAssertTrue(emptyState.waitForExistence(timeout: 2))
+        XCTAssertTrue(emptyState.label.contains("Tap + to add one."))
+        XCTAssertTrue(app.buttons["wallet-list-add-button"].exists)
+    }
+
+    @MainActor
     func testNoWalletHomeContent() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UI_TEST_FIXTURE"]
@@ -374,6 +447,28 @@ final class sevenwalletUITests: XCTestCase {
             "UI_TEST_SEED_SAVED_WALLET"
         ]
         return app
+    }
+
+    @MainActor
+    private func openWalletList(in app: XCUIApplication) {
+        let selector = app.buttons["wallet-selector-button"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 2))
+        selector.tap()
+
+        let walletList = app.buttons["wallet-list-button"]
+        XCTAssertTrue(walletList.waitForExistence(timeout: 2))
+        walletList.tap()
+
+        XCTAssertTrue(
+            walletListTitle(in: app).waitForExistence(timeout: 2)
+        )
+    }
+
+    @MainActor
+    private func walletListTitle(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(identifier: "wallet-list-title")
+            .firstMatch
     }
 }
 

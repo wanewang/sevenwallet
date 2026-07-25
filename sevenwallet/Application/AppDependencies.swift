@@ -5,6 +5,7 @@ import SwiftData
 struct WalletAppState {
     let session: WalletSession
     let homeViewModel: WalletHomeViewModel
+    let tokenRepository: any TokenRepositoryProtocol
 }
 
 @MainActor
@@ -90,7 +91,8 @@ enum AppDependencies {
                 cachePurger: cacheStore,
                 portfolioLoadController: portfolioLoadController
             ),
-            homeViewModel: WalletHomeViewModel(tokenRepository: repository)
+            homeViewModel: WalletHomeViewModel(tokenRepository: repository),
+            tokenRepository: repository
         )
     }
 
@@ -156,7 +158,8 @@ enum AppDependencies {
         )
         return WalletAppState(
             session: session,
-            homeViewModel: WalletHomeViewModel(tokenRepository: repository)
+            homeViewModel: WalletHomeViewModel(tokenRepository: repository),
+            tokenRepository: repository
         )
     }
 
@@ -195,14 +198,16 @@ enum AppDependencies {
 
     private static func unavailableState(message: String) -> WalletAppState {
         let error = AppDependencyFailure(message: message)
+        let repository = FailingTokenRepository(message: message)
         return WalletAppState(
             session: WalletSession(
                 store: FailingSavedWalletStore(error: error),
                 cachePurger: FailingAddressCachePurger(error: error)
             ),
             homeViewModel: WalletHomeViewModel(
-                tokenRepository: FailingTokenRepository(message: message)
-            )
+                tokenRepository: repository
+            ),
+            tokenRepository: repository
         )
     }
 

@@ -4,6 +4,7 @@ import SwiftUI
 struct WalletRootView: View {
     @State var session: WalletSession
     @State var homeViewModel: WalletHomeViewModel
+    let tokenRepository: any TokenRepositoryProtocol
     @State private var path: [Screen] = []
     @State private var hasResolvedWallets = false
 
@@ -23,6 +24,7 @@ struct WalletRootView: View {
                 onSelectWallet: { id in
                     Task { try? await session.select(id: id) }
                 },
+                onShowWalletList: { path.append(.walletList) },
                 onAddWallet: { path.append(.addWallet) },
                 onEditWallet: { path.append(.editWallet($0)) }
             )
@@ -39,6 +41,28 @@ struct WalletRootView: View {
                     } else {
                         Color.clear.task { path.removeAll() }
                     }
+                case .walletList:
+                    WalletListView(
+                        snapshot: session.walletSnapshot,
+                        selectionError: session.selectionErrorMessage,
+                        theme: theme,
+                        tokenRepository: tokenRepository,
+                        onBack: {
+                            if path.last == .walletList {
+                                path.removeLast()
+                            }
+                        },
+                        onAddWallet: { path.append(.addWallet) },
+                        onSelectWallet: { id in
+                            do {
+                                try await session.select(id: id)
+                                path.removeAll()
+                                return true
+                            } catch {
+                                return false
+                            }
+                        }
+                    )
                 default:
                     Color.clear
                 }
@@ -48,6 +72,11 @@ struct WalletRootView: View {
             \.colorScheme,
             homeViewModel.isThemeLight ? .light : .dark
         )
+        .onChange(of: path) { oldPath, newPath in
+            if oldPath.contains(.walletList), !newPath.contains(.walletList) {
+                session.clearSelectionError()
+            }
+        }
         .task { await loadWallets() }
     }
 

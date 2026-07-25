@@ -15,7 +15,8 @@ struct sevenwalletApp: App {
         WindowGroup {
             WalletRootView(
                 session: state.session,
-                homeViewModel: state.homeViewModel
+                homeViewModel: state.homeViewModel,
+                tokenRepository: state.tokenRepository
             )
         }
     }
