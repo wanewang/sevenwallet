@@ -117,21 +117,36 @@ enum AppDependencies {
         if let container {
             savedWalletStore = SavedWalletStore(modelContainer: container)
         } else {
-            let wallet = arguments.contains("UI_TEST_POPULATED_WALLET")
-                ? SavedWallet(
-                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
-                    name: "Main Wallet",
-                    address: try! EVMAddress(
-                        "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
-                    ),
-                    cardColor: .blue,
-                    createdAt: Date(timeIntervalSince1970: 0)
-                )
-                : nil
+            let mainWallet = SavedWallet(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                name: "Main Wallet",
+                address: try! EVMAddress(
+                    "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
+                ),
+                cardColor: .blue,
+                createdAt: Date(timeIntervalSince1970: 0)
+            )
+            let savingsWallet = SavedWallet(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+                name: "Savings Wallet",
+                address: try! EVMAddress(
+                    "0x0000000000000000000000000000000000000002"
+                ),
+                cardColor: .purple,
+                createdAt: Date(timeIntervalSince1970: 1)
+            )
+            let wallets: [SavedWallet]
+            if arguments.contains("UI_TEST_MULTIPLE_WALLETS") {
+                wallets = [mainWallet, savingsWallet]
+            } else if arguments.contains("UI_TEST_POPULATED_WALLET") {
+                wallets = [mainWallet]
+            } else {
+                wallets = []
+            }
             savedWalletStore = FixtureSavedWalletStore(
                 snapshot: SavedWalletSnapshot(
-                    wallets: wallet.map { [$0] } ?? [],
-                    selectedWalletID: wallet?.id
+                    wallets: wallets,
+                    selectedWalletID: wallets.first?.id
                 )
             )
         }
@@ -396,6 +411,11 @@ private actor FixtureSavedWalletStore: SavedWalletStoreProtocol {
         return snapshot
     }
 
+    func select(id: UUID) throws -> SavedWalletSnapshot {
+        snapshot = try snapshot.selecting(id: id)
+        return snapshot
+    }
+
     func update(
         id: UUID,
         name: String,
@@ -445,6 +465,7 @@ private actor FailingSavedWalletStore: SavedWalletStoreProtocol {
 
     func loadSnapshot() throws -> SavedWalletSnapshot { throw error }
     func addAndSelect(_ wallet: SavedWallet) throws -> SavedWalletSnapshot { throw error }
+    func select(id: UUID) throws -> SavedWalletSnapshot { throw error }
     func update(
         id: UUID,
         name: String,

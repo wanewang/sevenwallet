@@ -12,12 +12,18 @@ nonisolated enum WalletSessionError: LocalizedError, Equatable {
 @MainActor
 @Observable
 final class WalletSession {
-    private(set) var wallets: [SavedWallet] = []
-    private(set) var selectedWallet: SavedWallet?
+    private(set) var walletSnapshot = SavedWalletSnapshot(
+        wallets: [],
+        selectedWalletID: nil
+    )
     private(set) var isLoading = false
     private(set) var isDeletingWallet = false
     private(set) var loadErrorMessage: String?
+    private(set) var selectionErrorMessage: String?
     private var isMutatingWallets = false
+
+    var wallets: [SavedWallet] { walletSnapshot.wallets }
+    var selectedWallet: SavedWallet? { walletSnapshot.selectedWallet }
 
     private let store: any SavedWalletStoreProtocol
     private let cachePurger: any AddressCachePurging
@@ -37,6 +43,7 @@ final class WalletSession {
     func load() async {
         isLoading = true
         loadErrorMessage = nil
+        selectionErrorMessage = nil
         defer { isLoading = false }
         do {
             apply(try await store.loadSnapshot())
@@ -64,6 +71,25 @@ final class WalletSession {
         let snapshot = try await store.addAndSelect(wallet)
         await portfolioLoadController.resumePortfolioLoads(address: address)
         apply(snapshot)
+    }
+
+    func select(id: UUID) async throws {
+        guard selectedWallet?.id != id else { return }
+        guard !isMutatingWallets else {
+            let error = WalletSessionError.mutationInProgress
+            selectionErrorMessage = error.errorDescription
+            throw error
+        }
+        isMutatingWallets = true
+        defer { isMutatingWallets = false }
+
+        do {
+            apply(try await store.select(id: id))
+            selectionErrorMessage = nil
+        } catch {
+            selectionErrorMessage = "Unable to switch wallet."
+            throw error
+        }
     }
 
     func update(
@@ -119,7 +145,6 @@ final class WalletSession {
     }
 
     private func apply(_ snapshot: SavedWalletSnapshot) {
-        wallets = snapshot.wallets
-        selectedWallet = snapshot.selectedWallet
+        walletSnapshot = snapshot
     }
 }

@@ -203,6 +203,10 @@ struct WalletFormViewModelTests {
             return .init(wallets: [wallet], selectedWalletID: wallet.id)
         }
 
+        func select(id: UUID) async throws -> SavedWalletSnapshot {
+            .init(wallets: [], selectedWalletID: nil)
+        }
+
         func update(
             id: UUID,
             name: String,

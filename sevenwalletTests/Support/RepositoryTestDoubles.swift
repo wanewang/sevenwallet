@@ -86,6 +86,12 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
         return snapshot
     }
 
+    func select(id: UUID) throws -> SavedWalletSnapshot {
+        if let error { throw error }
+        snapshot = try snapshot.selecting(id: id)
+        return snapshot
+    }
+
     func waitUntilAddStarted() async {
         guard !hasStartedAdd else { return }
         await withCheckedContinuation { continuation in

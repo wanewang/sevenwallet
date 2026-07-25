@@ -3,11 +3,12 @@ import SwiftUI
 struct WalletTopBar: View {
     let theme: Theme
     let isThemeLight: Bool
+    let onShowWalletSelector: () -> Void
     let onToggleTheme: () -> Void
 
     var body: some View {
         HStack {
-            Button(action: {}) {
+            Button(action: onShowWalletSelector) {
                 HStack(spacing: 4) {
                     Image(systemName: "menubar.rectangle")
 

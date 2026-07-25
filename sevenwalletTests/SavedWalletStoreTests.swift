@@ -35,6 +35,19 @@ struct SavedWalletStoreTests {
         #expect(updated.createdAt == original.createdAt)
     }
 
+    @Test func selectChangesOnlyTheSelectedWallet() async throws {
+        let store = try makeStore()
+        let first = try wallet(name: "First", suffix: "1111", date: 100)
+        let second = try wallet(name: "Second", suffix: "2222", date: 200)
+        _ = try await store.addAndSelect(first)
+        _ = try await store.addAndSelect(second)
+
+        let snapshot = try await store.select(id: first.id)
+
+        #expect(snapshot.wallets == [first, second])
+        #expect(snapshot.selectedWalletID == first.id)
+    }
+
     @Test func deletingSelectedWalletSelectsOldestRemaining() async throws {
         let store = try makeStore()
         let first = try wallet(name: "First", suffix: "1111", date: 100)

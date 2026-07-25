@@ -70,6 +70,33 @@ struct WalletSessionTests {
         #expect(session.selectedWallet?.cardColor == .pink)
     }
 
+    @Test func selectPublishesTheChosenWallet() async throws {
+        let first = try makeWallet(name: "First")
+        let second = SavedWallet(
+            name: "Second",
+            address: try EVMAddress(
+                "0x0000000000000000000000000000000000000002"
+            ),
+            cardColor: .purple
+        )
+        let store = ScriptedSavedWalletStore(
+            snapshot: .init(
+                wallets: [first, second],
+                selectedWalletID: first.id
+            )
+        )
+        let session = WalletSession(
+            store: store,
+            cachePurger: RecordingAddressCachePurger()
+        )
+        await session.load()
+
+        try await session.select(id: second.id)
+
+        #expect(session.wallets == [first, second])
+        #expect(session.selectedWallet == second)
+    }
+
     @Test func addResumesPortfolioBeforePublishingSnapshot() async throws {
         let address = try makeWallet(name: "Reference").address
         let store = ScriptedSavedWalletStore()
