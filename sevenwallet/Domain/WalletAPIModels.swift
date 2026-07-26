@@ -24,6 +24,7 @@ nonisolated struct WalletToken: Codable, Equatable, Identifiable, Sendable {
 
     var key: String { "\(symbol):\(tokenAddress?.lowercased() ?? "native")" }
     var id: String { key }
+    var marketPriceUSD: Decimal? { priceUSD ?? price?.value }
 }
 
 nonisolated struct TokenPortfolio: Codable, Equatable, Sendable {

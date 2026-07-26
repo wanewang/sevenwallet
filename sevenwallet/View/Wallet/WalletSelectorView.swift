@@ -4,6 +4,7 @@ struct WalletSelectorView: View {
     let theme: Theme
     let snapshot: SavedWalletSnapshot
     let onSelectWallet: (UUID) -> Void
+    let onShowWalletList: () -> Void
     let onAddWallet: () -> Void
     let onDismiss: () -> Void
 
@@ -51,11 +52,14 @@ struct WalletSelectorView: View {
 
                 action(
                     icon: "menubar.dock.rectangle",
-                    title: "Wallet details",
+                    title: "Wallet list",
                     tint: theme.fg1,
-                    action: {}
-                )
-                .accessibilityIdentifier("wallet-details-button")
+                    trailingIcon: "chevron.right"
+                ) {
+                    onShowWalletList()
+                    onDismiss()
+                }
+                .accessibilityIdentifier("wallet-list-button")
 
                 action(
                     icon: "plus",
@@ -135,15 +139,26 @@ struct WalletSelectorView: View {
         icon: String,
         title: String,
         tint: Color,
+        trailingIcon: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .frame(height: 42)
+            HStack(spacing: 10) {
+                Label(title, systemImage: icon)
+
+                Spacer()
+
+                if let trailingIcon {
+                    Image(systemName: trailingIcon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .accessibilityHidden(true)
+                }
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

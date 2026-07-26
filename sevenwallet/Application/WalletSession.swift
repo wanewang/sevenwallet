@@ -95,6 +95,10 @@ final class WalletSession {
         }
     }
 
+    func clearSelectionError() {
+        selectionErrorMessage = nil
+    }
+
     func update(
         id: UUID,
         name: String,

@@ -10,6 +10,7 @@ struct WalletHomeView: View {
     let isWalletDeletionInProgress: Bool
     let onRetryWallets: () -> Void
     let onSelectWallet: (UUID) -> Void
+    let onShowWalletList: () -> Void
     let onAddWallet: () -> Void
     let onEditWallet: (UUID) -> Void
 
@@ -21,6 +22,7 @@ struct WalletHomeView: View {
         isWalletDeletionInProgress: Bool = false,
         onRetryWallets: @escaping () -> Void = {},
         onSelectWallet: @escaping (UUID) -> Void = { _ in },
+        onShowWalletList: @escaping () -> Void = {},
         onAddWallet: @escaping () -> Void = {},
         onEditWallet: @escaping (UUID) -> Void = { _ in }
     ) {
@@ -31,6 +33,7 @@ struct WalletHomeView: View {
         self.isWalletDeletionInProgress = isWalletDeletionInProgress
         self.onRetryWallets = onRetryWallets
         self.onSelectWallet = onSelectWallet
+        self.onShowWalletList = onShowWalletList
         self.onAddWallet = onAddWallet
         self.onEditWallet = onEditWallet
     }
@@ -124,6 +127,7 @@ struct WalletHomeView: View {
                     theme: theme,
                     snapshot: viewModel.walletSnapshot,
                     onSelectWallet: onSelectWallet,
+                    onShowWalletList: onShowWalletList,
                     onAddWallet: onAddWallet,
                     onDismiss: { setWalletSelector(visible: false) }
                 )
