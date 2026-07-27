@@ -4,10 +4,10 @@
 - [x] 1.2 Mark `RefreshPolicy` as a nonisolated value type so its `Equatable` conformance is available to Swift Testing's nonisolated comparison code.
 - [x] 1.3 Review every isolation edit to confirm that no actor-owning service, UI type, build setting, warning suppression, or unsafe isolation escape was changed.
 
-## 2. Bound JSON Decoder Ownership
+## 2. Bound JSON Codec Ownership
 
-- [x] 2.1 Keep independent one-shot decode call sites operation-local and confirm that no codebase-wide shared decoder or decoder-provider abstraction is introduced.
-- [x] 2.2 Reuse one function-local `JSONDecoder` within the `WalletStore` metadata record loop so repeated records do not repeatedly initialize a decoder during the same serialized operation.
+- [x] 2.1 Keep independent one-shot encoding and decoding call sites operation-local and confirm that no codebase-wide shared codec or codec-provider abstraction is introduced.
+- [x] 2.2 Reuse one function-local `JSONDecoder` and `JSONEncoder` within the corresponding `WalletStore` metadata record loops so repeated records do not repeatedly initialize codecs during the same serialized operation.
 
 ## 3. Verify Diagnostics and Behavior
 

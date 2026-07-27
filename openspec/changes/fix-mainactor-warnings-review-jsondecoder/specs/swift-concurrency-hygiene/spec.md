@@ -25,13 +25,13 @@ Isolation corrections SHALL NOT change encoded cache formats, cache versioning, 
 - **WHEN** the persistence layer reads a cache payload produced before this change
 - **THEN** it produces the same domain value or the same invalid-cache outcome as before the change
 
-### Requirement: Decoder instances have bounded ownership
-Default-configured JSON decoder instances SHALL be local to one decode operation or one already-serialized operation scope and SHALL NOT be stored as shared mutable process-wide state.
+### Requirement: JSON codec instances have bounded ownership
+Default-configured JSON encoder and decoder instances SHALL be local to one serialization operation or one already-serialized operation scope and SHALL NOT be stored as shared mutable process-wide state.
 
-#### Scenario: Independent components decode concurrently
-- **WHEN** networking, persistence, or test code performs independent default-configured JSON decoding
-- **THEN** the components do not concurrently access a codebase-wide shared decoder instance
+#### Scenario: Independent components serialize concurrently
+- **WHEN** networking, persistence, or test code performs independent default-configured JSON encoding or decoding
+- **THEN** the components do not concurrently access codebase-wide shared codec instances
 
-#### Scenario: One operation decodes multiple records
-- **WHEN** one synchronous actor-isolated operation decodes multiple records in a loop
-- **THEN** it may reuse one decoder whose lifetime and access remain local to that operation
+#### Scenario: One operation serializes multiple records
+- **WHEN** one synchronous actor-isolated operation encodes or decodes multiple records in a loop
+- **THEN** it may reuse one appropriate codec whose lifetime and access remain local to that operation
