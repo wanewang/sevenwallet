@@ -3,6 +3,7 @@ import Foundation
 protocol TokenRemoteDataSourceProtocol: Sendable {
     func fetchNativeTokens() async throws -> [WalletToken]
     func fetchPortfolio(address: EVMAddress) async throws -> TokenPortfolio
+    func fetchTokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio
 }
 
 protocol TransactionRemoteDataSourceProtocol: Sendable {
@@ -35,6 +36,27 @@ struct TokenRemoteDataSource: TokenRemoteDataSourceProtocol, Sendable {
                 fetchedAt: try parseDate(payload.fetchedAt),
                 network: payload.network,
                 tokens: try payload.tokens.map(makeToken)
+            )
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw APIError.invalidData
+        }
+    }
+
+    func fetchTokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        let data = try await client.data(for: .tokenMarkets(address))
+        do {
+            let payload = try JSONDecoder().decode(TokenMarketPortfolioDTO.self, from: data)
+            guard let returnedWallet = try? EVMAddress(payload.wallet),
+                  returnedWallet == address else {
+                throw APIError.invalidData
+            }
+            return TokenMarketPortfolio(
+                wallet: returnedWallet,
+                network: payload.network,
+                portfolioFetchedAt: try parseRequiredDate(payload.portfolioFetchedAt),
+                tokens: try payload.tokens.map(makeTokenMarket)
             )
         } catch let error as APIError {
             throw error
@@ -107,6 +129,35 @@ private struct PortfolioDTO: Decodable {
     let tokens: [TokenDTO]
 }
 
+private struct TokenMarketPortfolioDTO: Decodable {
+    let wallet: String
+    let network: String
+    let portfolioFetchedAt: String
+    let tokens: [TokenMarketDTO]
+}
+
+private struct TokenMarketDTO: Decodable {
+    let tokenAddress: String?
+    let symbol: String
+    let name: String
+    let decimals: Int
+    let balance: String
+    let cg: CoinGeckoMarketDTO?
+    let cmc: CoinMarketCapMarketDTO?
+}
+
+private struct CoinGeckoMarketDTO: Decodable {
+    let id: String
+    let priceUSD: String?
+    let change24hPercent: Decimal?
+}
+
+private struct CoinMarketCapMarketDTO: Decodable {
+    let id: Int
+    let priceUSD: String?
+    let change24hPercent: Decimal?
+}
+
 private struct TransactionPageDTO: Decodable {
     let address: String
     let nextPageKey: String?
@@ -156,6 +207,30 @@ private func makeToken(_ payload: TokenDTO) throws -> WalletToken {
     )
 }
 
+private func makeTokenMarket(_ payload: TokenMarketDTO) throws -> TokenMarket {
+    TokenMarket(
+        tokenAddress: payload.tokenAddress,
+        symbol: payload.symbol,
+        name: payload.name,
+        decimals: payload.decimals,
+        balance: try parseRequiredDecimal(payload.balance),
+        coinGecko: try payload.cg.map {
+            CoinGeckoMarket(
+                id: $0.id,
+                priceUSD: try parseDecimal($0.priceUSD),
+                change24hPercent: $0.change24hPercent
+            )
+        },
+        coinMarketCap: try payload.cmc.map {
+            CoinMarketCapMarket(
+                id: $0.id,
+                priceUSD: try parseDecimal($0.priceUSD),
+                change24hPercent: $0.change24hPercent
+            )
+        }
+    )
+}
+
 private func parseRequiredDecimal(_ rawValue: String) throws -> Decimal {
     guard rawValue.range(of: decimalPattern, options: .regularExpression) != nil,
           let value = Decimal(string: rawValue, locale: decimalLocale) else {
@@ -171,6 +246,10 @@ private func parseDecimal(_ rawValue: String?) throws -> Decimal? {
 
 private func parseDate(_ rawValue: String?) throws -> Date? {
     guard let rawValue else { return nil }
+    return try parseRequiredDate(rawValue)
+}
+
+private func parseRequiredDate(_ rawValue: String) throws -> Date {
     guard let value = ISO8601Formatters.standard.date(from: rawValue)
         ?? (try? ISO8601Formatters.fractionalSeconds.parse(rawValue)) else {
         throw APIError.invalidData

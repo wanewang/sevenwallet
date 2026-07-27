@@ -46,6 +46,20 @@ struct WalletAPIModelsTests {
         #expect(first.key == second.key)
     }
 
+    @Test func contractTokenMarketKeyUsesSymbolAndNormalizedAddress() {
+        let token = makeTokenMarket(symbol: "USDC", tokenAddress: "0xABC")
+
+        #expect(token.key == "USDC:0xabc")
+        #expect(token.id == token.key)
+    }
+
+    @Test func nativeTokenMarketKeyUsesNativeMarker() {
+        let token = makeTokenMarket(symbol: "ETH", tokenAddress: nil)
+
+        #expect(token.key == "ETH:native")
+        #expect(token.id == token.key)
+    }
+
     private func makeToken(symbol: String, tokenAddress: String?, coinKey: String?) -> WalletToken {
         WalletToken(
             tokenAddress: tokenAddress,
@@ -62,6 +76,18 @@ struct WalletAPIModelsTests {
             marketCapUSD: nil,
             marketDataUpdatedAt: nil,
             priceUSD: nil
+        )
+    }
+
+    private func makeTokenMarket(symbol: String, tokenAddress: String?) -> TokenMarket {
+        TokenMarket(
+            tokenAddress: tokenAddress,
+            symbol: symbol,
+            name: "Token",
+            decimals: 18,
+            balance: 0,
+            coinGecko: nil,
+            coinMarketCap: nil
         )
     }
 }

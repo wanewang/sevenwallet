@@ -34,6 +34,38 @@ nonisolated struct TokenPortfolio: Codable, Equatable, Sendable {
     let tokens: [WalletToken]
 }
 
+nonisolated struct CoinGeckoMarket: Equatable, Sendable {
+    let id: String
+    let priceUSD: Decimal?
+    let change24hPercent: Decimal?
+}
+
+nonisolated struct CoinMarketCapMarket: Equatable, Sendable {
+    let id: Int
+    let priceUSD: Decimal?
+    let change24hPercent: Decimal?
+}
+
+nonisolated struct TokenMarket: Equatable, Identifiable, Sendable {
+    let tokenAddress: String?
+    let symbol: String
+    let name: String
+    let decimals: Int
+    let balance: Decimal
+    let coinGecko: CoinGeckoMarket?
+    let coinMarketCap: CoinMarketCapMarket?
+
+    var key: String { "\(symbol):\(tokenAddress?.lowercased() ?? "native")" }
+    var id: String { key }
+}
+
+nonisolated struct TokenMarketPortfolio: Equatable, Sendable {
+    let wallet: EVMAddress
+    let network: String
+    let portfolioFetchedAt: Date
+    let tokens: [TokenMarket]
+}
+
 nonisolated struct WalletTransfer: Codable, Equatable, Sendable {
     let asset: String?
     let blockNumber: String?
