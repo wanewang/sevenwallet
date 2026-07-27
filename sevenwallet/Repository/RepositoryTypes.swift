@@ -1,11 +1,11 @@
 import Foundation
 
-enum RefreshPolicy: Equatable, Sendable {
+nonisolated enum RefreshPolicy: Equatable, Sendable {
     case ifExpired
     case force
 }
 
-enum RepositoryLoadEvent<Value: Sendable>: Sendable {
+nonisolated enum RepositoryLoadEvent<Value: Sendable>: Sendable {
     case cached(Value)
     case refreshing
     case fresh(Value)
@@ -13,10 +13,10 @@ enum RepositoryLoadEvent<Value: Sendable>: Sendable {
 
 extension RepositoryLoadEvent: Equatable where Value: Equatable {}
 
-struct DateProvider: Sendable {
+nonisolated struct DateProvider: Sendable {
     let now: @Sendable () -> Date
 
-    nonisolated static let system = DateProvider(now: Date.init)
+    static let system = DateProvider(now: Date.init)
 }
 
 protocol TokenRepositoryProtocol: Sendable {
@@ -49,18 +49,18 @@ protocol TransactionRepositoryProtocol: Sendable {
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TransactionPage>, Swift.Error>
 }
 
-struct TransactionRequestKey: Hashable, Sendable {
+nonisolated struct TransactionRequestKey: Hashable, Sendable {
     let address: EVMAddress
     let limit: Int
     let pageKey: String?
 }
 
-enum RepositoryError: Swift.Error, Equatable, LocalizedError {
+nonisolated enum RepositoryError: Swift.Error, Equatable, LocalizedError {
     case invalidTransactionLimit(Int)
     case storageReadFailed
     case storageWriteFailed
 
-    nonisolated var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .invalidTransactionLimit, .storageReadFailed:
             "Unable to load wallet data."

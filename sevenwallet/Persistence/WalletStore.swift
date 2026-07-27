@@ -209,8 +209,9 @@ actor WalletStore: WalletStoreProtocol, AddressCachePurging {
     private func tokenMetadata(for tokenKeys: [String]) throws -> [String: CachedTokenMetadata]? {
         let requiredKeys = Set(tokenKeys)
         var result: [String: CachedTokenMetadata] = [:]
+        let decoder = JSONDecoder()
         for record in try modelContext.fetch(FetchDescriptor<TokenCacheRecord>()) where requiredKeys.contains(record.key) {
-            guard let metadata = try? JSONDecoder().decode(CachedTokenMetadata.self, from: record.payload),
+            guard let metadata = try? decoder.decode(CachedTokenMetadata.self, from: record.payload),
                   metadata.key == record.key else {
                 return nil
             }
@@ -224,8 +225,9 @@ actor WalletStore: WalletStoreProtocol, AddressCachePurging {
         for record in try modelContext.fetch(FetchDescriptor<TokenCacheRecord>()) {
             records[record.key] = record
         }
+        let encoder = JSONEncoder()
         for token in tokens {
-            let payload = try JSONEncoder().encode(CachedTokenMetadata(token: token))
+            let payload = try encoder.encode(CachedTokenMetadata(token: token))
             if let record = records[token.key] {
                 record.payload = payload
             } else {
@@ -304,20 +306,20 @@ actor WalletStore: WalletStoreProtocol, AddressCachePurging {
     }
 }
 
-private let cachePayloadVersion = 1
+private nonisolated let cachePayloadVersion = 1
 
-private struct NativeTokenSnapshot: Codable {
+private nonisolated struct NativeTokenSnapshot: Codable {
     let version: Int
     let tokenKeys: [String]
 }
 
-private struct PortfolioSnapshot: Codable {
+private nonisolated struct PortfolioSnapshot: Codable {
     let version: Int
     let fetchedAt: Date?
     let network: String?
 }
 
-private struct CachedTokenMetadata: Codable {
+private nonisolated struct CachedTokenMetadata: Codable {
     let tokenAddress: String?
     let symbol: String
     let name: String
