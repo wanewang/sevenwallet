@@ -684,6 +684,10 @@ actor TokenRemoteDataSourceSpy: TokenRemoteDataSourceProtocol {
         }
     }
 
+    func fetchTokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        throw RepositoryTestError.remoteFailure
+    }
+
     func waitUntilPortfolioRequested(address: EVMAddress) async {
         guard portfolioCallCounts[address, default: 0] == 0 else { return }
         await withCheckedContinuation { continuation in

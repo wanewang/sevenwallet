@@ -1,12 +1,22 @@
 import Foundation
 
+nonisolated protocol TokenIdentifiable: Identifiable where ID == String {
+    var symbol: String { get }
+    var tokenAddress: String? { get }
+}
+
+extension TokenIdentifiable {
+    nonisolated var key: String { "\(symbol):\(tokenAddress?.lowercased() ?? "native")" }
+    nonisolated var id: String { key }
+}
+
 nonisolated struct TokenPrice: Codable, Equatable, Sendable {
     let currency: String?
     let value: Decimal?
     let lastUpdatedAt: Date?
 }
 
-nonisolated struct WalletToken: Codable, Equatable, Identifiable, Sendable {
+nonisolated struct WalletToken: Codable, Equatable, TokenIdentifiable, Sendable {
     let tokenAddress: String?
     let symbol: String
     let name: String
@@ -22,8 +32,6 @@ nonisolated struct WalletToken: Codable, Equatable, Identifiable, Sendable {
     let marketDataUpdatedAt: Date?
     let priceUSD: Decimal?
 
-    var key: String { "\(symbol):\(tokenAddress?.lowercased() ?? "native")" }
-    var id: String { key }
     var marketPriceUSD: Decimal? { priceUSD ?? price?.value }
 }
 
@@ -32,6 +40,32 @@ nonisolated struct TokenPortfolio: Codable, Equatable, Sendable {
     let fetchedAt: Date?
     let network: String?
     let tokens: [WalletToken]
+}
+
+nonisolated struct MarketQuote<ID: Equatable & Sendable>: Equatable, Sendable {
+    let id: ID
+    let priceUSD: Decimal?
+    let change24hPercent: Decimal?
+}
+
+typealias CoinGeckoMarket = MarketQuote<String>
+typealias CoinMarketCapMarket = MarketQuote<Int>
+
+nonisolated struct TokenMarket: Equatable, TokenIdentifiable, Sendable {
+    let tokenAddress: String?
+    let symbol: String
+    let name: String
+    let decimals: Int
+    let balance: Decimal
+    let coinGecko: CoinGeckoMarket?
+    let coinMarketCap: CoinMarketCapMarket?
+}
+
+nonisolated struct TokenMarketPortfolio: Equatable, Sendable {
+    let wallet: EVMAddress
+    let network: String
+    let portfolioFetchedAt: Date
+    let tokens: [TokenMarket]
 }
 
 nonisolated struct WalletTransfer: Codable, Equatable, Sendable {

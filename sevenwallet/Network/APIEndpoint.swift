@@ -3,6 +3,7 @@ import Foundation
 enum APIEndpoint: Equatable, Sendable {
     case nativeTokens
     case portfolio(EVMAddress)
+    case tokenMarkets(EVMAddress)
     case transactions(EVMAddress, limit: Int, pageKey: String?)
 
     var path: String {
@@ -11,6 +12,8 @@ enum APIEndpoint: Equatable, Sendable {
             "/v1/native"
         case .portfolio(let address):
             "/v1/addresses/\(address.rawValue)/tokens"
+        case .tokenMarkets(let address):
+            "/v1/tokens/\(address.rawValue)"
         case .transactions(let address, _, _):
             "/v1/addresses/\(address.rawValue)/transactions"
         }

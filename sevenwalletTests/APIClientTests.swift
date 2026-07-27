@@ -169,6 +169,101 @@ struct APIClientTests {
         }
     }
 
+    @Test func tokenMarketsUseNormalizedV1PathAndMapProviders() async throws {
+        let requested = try EVMAddress("0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92")
+        let (client, recorder) = makeClient(
+            status: 200,
+            body: #"{"network":"ethereum","portfolioFetchedAt":"2026-07-23T20:00:14.049803Z","tokens":[{"balance":"1.250000000000000001","cg":{"change24hPercent":1.2345,"id":"ethereum","priceUSD":"1926.420000000000000001"},"cmc":{"change24hPercent":1.1111,"id":1027,"priceUSD":"1925.990000000000000001"},"decimals":18,"name":"Ether","symbol":"ETH","tokenAddress":null}],"wallet":"0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"}"#
+        )
+
+        let portfolio = try await TokenRemoteDataSource(client: client)
+            .fetchTokenMarkets(address: requested)
+        let token = try #require(portfolio.tokens.first)
+        let coinGecko = try #require(token.coinGecko)
+        let coinMarketCap = try #require(token.coinMarketCap)
+
+        #expect(await recorder.lastRequest?.url?.absoluteString == "https://wallet.example/v1/tokens/0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92")
+        #expect(portfolio.wallet == requested)
+        #expect(portfolio.network == "ethereum")
+        #expect(abs(portfolio.portfolioFetchedAt.timeIntervalSince1970 - 1_784_836_814.049803) < 0.000001)
+        #expect(token.balance == Decimal(string: "1.250000000000000001"))
+        #expect(coinGecko.id == "ethereum")
+        #expect(coinGecko.priceUSD == Decimal(string: "1926.420000000000000001"))
+        #expect(coinGecko.change24hPercent == Decimal(string: "1.2345"))
+        #expect(coinMarketCap.id == 1027)
+        #expect(coinMarketCap.priceUSD == Decimal(string: "1925.990000000000000001"))
+        #expect(coinMarketCap.change24hPercent == Decimal(string: "1.1111"))
+    }
+
+    @Test func tokenMarketsAcceptDocumentedNullAndOmittedValues() async throws {
+        let requested = try EVMAddress("0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92")
+        let (client, _) = makeClient(
+            status: 200,
+            body: #"{"network":"ethereum","portfolioFetchedAt":"2026-07-23T20:00:14Z","tokens":[{"balance":"1","cg":null,"cmc":null,"decimals":18,"name":"Ether","symbol":"ETH","tokenAddress":null},{"balance":"2","decimals":6,"name":"Token","symbol":"TKN"},{"balance":"3","cg":{"id":"usd-coin"},"cmc":{"id":3408},"decimals":6,"name":"USD Coin","symbol":"USDC","tokenAddress":"0x1111111111111111111111111111111111111111"},{"balance":"4","cg":{"change24hPercent":null,"id":"tether","priceUSD":null},"cmc":{"change24hPercent":null,"id":825,"priceUSD":null},"decimals":6,"name":"Tether","symbol":"USDT","tokenAddress":null}],"wallet":"0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92"}"#
+        )
+
+        let portfolio = try await TokenRemoteDataSource(client: client)
+            .fetchTokenMarkets(address: requested)
+
+        #expect(portfolio.tokens.count == 4)
+        #expect(portfolio.tokens[0].tokenAddress == nil)
+        #expect(portfolio.tokens[0].coinGecko == nil)
+        #expect(portfolio.tokens[0].coinMarketCap == nil)
+        #expect(portfolio.tokens[1].tokenAddress == nil)
+        #expect(portfolio.tokens[1].coinGecko == nil)
+        #expect(portfolio.tokens[1].coinMarketCap == nil)
+        #expect(portfolio.tokens[2].coinGecko?.priceUSD == nil)
+        #expect(portfolio.tokens[2].coinGecko?.change24hPercent == nil)
+        #expect(portfolio.tokens[2].coinMarketCap?.priceUSD == nil)
+        #expect(portfolio.tokens[2].coinMarketCap?.change24hPercent == nil)
+        #expect(portfolio.tokens[3].coinGecko?.id == "tether")
+        #expect(portfolio.tokens[3].coinGecko?.priceUSD == nil)
+        #expect(portfolio.tokens[3].coinGecko?.change24hPercent == nil)
+        #expect(portfolio.tokens[3].coinMarketCap?.id == 825)
+        #expect(portfolio.tokens[3].coinMarketCap?.priceUSD == nil)
+        #expect(portfolio.tokens[3].coinMarketCap?.change24hPercent == nil)
+    }
+
+    @Test func tokenMarketsRejectMalformedAndIncompleteValues() async throws {
+        let requested = try EVMAddress("0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92")
+        let invalidBodies = [
+            makeTokenMarketResponse(token: #"{"balance":"1oops","decimals":18,"name":"Ether","symbol":"ETH"}"#),
+            makeTokenMarketResponse(token: #"{"balance":"1","cg":{"id":"ethereum","priceUSD":"2oops"},"decimals":18,"name":"Ether","symbol":"ETH"}"#),
+            makeTokenMarketResponse(token: #"{"balance":"1","cmc":{"change24hPercent":"1.2","id":1027},"decimals":18,"name":"Ether","symbol":"ETH"}"#),
+            makeTokenMarketResponse(token: #"{"balance":"1","cg":{"priceUSD":"2"},"decimals":18,"name":"Ether","symbol":"ETH"}"#),
+            makeTokenMarketResponse(token: #"{"balance":"1","decimals":18,"name":"Ether"}"#),
+            makeTokenMarketResponse(token: #"{"balance":null,"decimals":18,"name":"Ether","symbol":"ETH"}"#),
+            makeTokenMarketResponse(portfolioFetchedAt: "not-a-date"),
+            makeTokenMarketResponse(network: nil),
+            #"{"network":"ethereum","portfolioFetchedAt":"2026-07-23T20:00:14Z","wallet":"0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92"}"#,
+            #"{"network":"ethereum","portfolioFetchedAt":"2026-07-23T20:00:14Z","tokens":[]}"#
+        ]
+
+        for body in invalidBodies {
+            let (client, _) = makeClient(status: 200, body: body)
+
+            await #expect(throws: APIError.invalidData) {
+                try await TokenRemoteDataSource(client: client)
+                    .fetchTokenMarkets(address: requested)
+            }
+        }
+    }
+
+    @Test func tokenMarketsRejectDifferentReturnedWallet() async throws {
+        let requested = try EVMAddress("0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92")
+        let (client, _) = makeClient(
+            status: 200,
+            body: makeTokenMarketResponse(
+                wallet: "0x1111111111111111111111111111111111111111"
+            )
+        )
+
+        await #expect(throws: APIError.invalidData) {
+            try await TokenRemoteDataSource(client: client)
+                .fetchTokenMarkets(address: requested)
+        }
+    }
+
     @Test func transactionsMapCursorTransfersAndEncodedRequest() async throws {
         let requested = try EVMAddress("0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92")
         let (client, recorder) = makeClient(
@@ -344,4 +439,14 @@ private func makeClient() -> APIClient {
         baseURL: URL(string: "https://wallet.example")!,
         session: URLSession(configuration: configuration)
     )
+}
+
+private func makeTokenMarketResponse(
+    wallet: String = "0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92",
+    portfolioFetchedAt: String = "2026-07-23T20:00:14Z",
+    network: String? = "ethereum",
+    token: String = #"{"balance":"1","decimals":18,"name":"Ether","symbol":"ETH"}"#
+) -> String {
+    let networkProperty = network.map { #""network":"\#($0)","# } ?? ""
+    return #"{\#(networkProperty)"portfolioFetchedAt":"\#(portfolioFetchedAt)","tokens":[\#(token)],"wallet":"\#(wallet)"}"#
 }
