@@ -155,6 +155,9 @@ struct APIClientTests {
         #expect(portfolio.tokens.first?.balance == Decimal(string: "2.5"))
         #expect(portfolio.tokens.first?.logoURL?.absoluteString == "https://assets.example/usdc.png")
         #expect(portfolio.tokens.first?.price?.currency == nil)
+        #expect(portfolio.tokens.first?.change24hPercent == nil)
+        #expect(portfolio.tokens.first?.marketCapUSD == nil)
+        #expect(portfolio.tokens.first?.marketDataUpdatedAt == nil)
     }
 
     @Test func portfolioRejectsDifferentReturnedAddress() async throws {
