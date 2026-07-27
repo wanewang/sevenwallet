@@ -148,13 +148,16 @@ struct APIClientTests {
 
         let portfolio = try await TokenRemoteDataSource(client: client).fetchPortfolio(address: requested)
 
-        #expect(await recorder.lastRequest?.url?.absoluteString == "https://wallet.example/v1/addresses/0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92/tokens")
+        #expect(await recorder.lastRequest?.url?.absoluteString == "https://wallet.example/v1/wallet/0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92")
         #expect(portfolio.address == requested)
         #expect(portfolio.network == "ethereum")
         #expect(portfolio.tokens.count == 1)
         #expect(portfolio.tokens.first?.balance == Decimal(string: "2.5"))
         #expect(portfolio.tokens.first?.logoURL?.absoluteString == "https://assets.example/usdc.png")
         #expect(portfolio.tokens.first?.price?.currency == nil)
+        #expect(portfolio.tokens.first?.change24hPercent == nil)
+        #expect(portfolio.tokens.first?.marketCapUSD == nil)
+        #expect(portfolio.tokens.first?.marketDataUpdatedAt == nil)
     }
 
     @Test func portfolioRejectsDifferentReturnedAddress() async throws {
