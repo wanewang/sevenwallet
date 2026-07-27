@@ -23,13 +23,13 @@ This change represents that contract independently. Existing holdings, repositor
 
 ## Decisions
 
-1. **Add independent domain types.** `TokenMarketPortfolio` will contain a validated `EVMAddress` wallet, required network and fetched date, and market tokens. `TokenMarket` will contain the required identity, precision, and decimal balance plus optional provider values. Provider-specific domain types retain their different documented ID types: `String` for CoinGecko and `Int` for CoinMarketCap. Reusing `WalletToken` was rejected because the market route omits required holdings fields and has two independent provider payloads.
+1. **Add independent domain types.** `TokenMarketPortfolio` will contain a validated `EVMAddress` wallet, required network and fetched date, and market tokens. `TokenMarket` will contain the required identity, precision, and decimal balance plus optional provider values. The two providers share one generic `MarketQuote<ID>` shape, aliased as `CoinGeckoMarket = MarketQuote<String>` and `CoinMarketCapMarket = MarketQuote<Int>`, so their different documented ID types are carried by the type parameter instead of by duplicated declarations. Reusing `WalletToken` was rejected because the market route omits required holdings fields and has two independent provider payloads.
 
 2. **Keep wire names inside private DTOs.** Transport DTOs will mirror `wallet`, `portfolioFetchedAt`, `cg`, `cmc`, and `priceUSD`; the mapper will expose descriptive `coinGecko` and `coinMarketCap` domain properties. This prevents abbreviated wire names from leaking into downstream Swift code.
 
 3. **Use strict value conversion.** Required `balance` and optional provider `priceUSD` strings will be parsed as `Decimal`; numeric provider changes will decode directly as optional `Decimal`; and `portfolioFetchedAt` will become a required `Date`. Explicit null and omission are accepted only by optional DTO properties. Invalid non-null wire types, malformed decimal strings, malformed timestamps, missing structural fields, and a returned wallet different from the requested address all produce `APIError.invalidData`.
 
-4. **Share token matching semantics.** `TokenMarket.key` will combine its symbol with the lowercased token address, using `native` when the nullable address is absent, and `id` will equal that key. Provider IDs do not participate in identity, allowing the new market data to be joined to `WalletToken` later without defining that integration now.
+4. **Share token matching semantics.** A `TokenIdentifiable` protocol will define `key` once as the symbol combined with the lowercased token address, using `native` when the nullable address is absent, with `id` equal to that key; `WalletToken` and `TokenMarket` both adopt it, so market tokens cannot drift out of identity compatibility with wallet tokens. Provider IDs do not participate in identity, allowing the new market data to be joined to `WalletToken` later without defining that integration now.
 
 5. **Preserve providers independently.** No combined price, change, or provider-precedence helper will be added because the API contract does not specify which source wins when both exist or disagree.
 
@@ -40,7 +40,7 @@ This change represents that contract independently. Existing holdings, repositor
 - **[Risk] The strict structural model rejects a partially populated server response** → This matches the agreed contract that only Swagger-marked nullable fields may be absent or null and prevents unusable values from entering the domain.
 - **[Risk] Provider values can disagree without a convenient selected price** → Preserve both sources faithfully and defer precedence to a future product requirement.
 - **[Risk] The new callable method is not yet used by application flows** → Keep this change focused on contract alignment while making later integration possible without redesigning the transport layer.
-- **[Risk] Provider DTO and domain types add parallel model shapes** → Keep DTOs private and mapping explicit; do not generalize the two providers because their identity types differ.
+- **[Risk] Provider DTO and domain types add parallel model shapes** → Keep DTOs private, and express the shared provider shape once as a generic (`MarketQuote<ID>`, `MarketQuoteDTO<ID>`) parameterized by the differing identity type, so the two providers cannot drift apart.
 
 ## Migration Plan
 

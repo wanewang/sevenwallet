@@ -142,18 +142,12 @@ private struct TokenMarketDTO: Decodable {
     let name: String
     let decimals: Int
     let balance: String
-    let cg: CoinGeckoMarketDTO?
-    let cmc: CoinMarketCapMarketDTO?
+    let cg: MarketQuoteDTO<String>?
+    let cmc: MarketQuoteDTO<Int>?
 }
 
-private struct CoinGeckoMarketDTO: Decodable {
-    let id: String
-    let priceUSD: String?
-    let change24hPercent: Decimal?
-}
-
-private struct CoinMarketCapMarketDTO: Decodable {
-    let id: Int
+private struct MarketQuoteDTO<ID: Decodable>: Decodable {
+    let id: ID
     let priceUSD: String?
     let change24hPercent: Decimal?
 }
@@ -214,20 +208,18 @@ private func makeTokenMarket(_ payload: TokenMarketDTO) throws -> TokenMarket {
         name: payload.name,
         decimals: payload.decimals,
         balance: try parseRequiredDecimal(payload.balance),
-        coinGecko: try payload.cg.map {
-            CoinGeckoMarket(
-                id: $0.id,
-                priceUSD: try parseDecimal($0.priceUSD),
-                change24hPercent: $0.change24hPercent
-            )
-        },
-        coinMarketCap: try payload.cmc.map {
-            CoinMarketCapMarket(
-                id: $0.id,
-                priceUSD: try parseDecimal($0.priceUSD),
-                change24hPercent: $0.change24hPercent
-            )
-        }
+        coinGecko: try payload.cg.map(makeMarketQuote),
+        coinMarketCap: try payload.cmc.map(makeMarketQuote)
+    )
+}
+
+private func makeMarketQuote<ID: Decodable & Equatable & Sendable>(
+    _ payload: MarketQuoteDTO<ID>
+) throws -> MarketQuote<ID> {
+    MarketQuote(
+        id: payload.id,
+        priceUSD: try parseDecimal(payload.priceUSD),
+        change24hPercent: payload.change24hPercent
     )
 }
 
