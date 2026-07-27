@@ -148,7 +148,7 @@ struct APIClientTests {
 
         let portfolio = try await TokenRemoteDataSource(client: client).fetchPortfolio(address: requested)
 
-        #expect(await recorder.lastRequest?.url?.absoluteString == "https://wallet.example/v1/addresses/0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92/tokens")
+        #expect(await recorder.lastRequest?.url?.absoluteString == "https://wallet.example/v1/wallet/0x71a2b3c4d5e6f7890a1b2c3d4e5f67890abc8f92")
         #expect(portfolio.address == requested)
         #expect(portfolio.network == "ethereum")
         #expect(portfolio.tokens.count == 1)

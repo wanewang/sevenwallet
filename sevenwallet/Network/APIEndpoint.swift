@@ -11,7 +11,7 @@ enum APIEndpoint: Equatable, Sendable {
         case .nativeTokens:
             "/v1/native"
         case .portfolio(let address):
-            "/v1/addresses/\(address.rawValue)/tokens"
+            "/v1/wallet/\(address.rawValue)"
         case .tokenMarkets(let address):
             "/v1/tokens/\(address.rawValue)"
         case .transactions(let address, _, _):
