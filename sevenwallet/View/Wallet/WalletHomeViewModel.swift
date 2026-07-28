@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 @MainActor
 @Observable
@@ -252,6 +253,14 @@ final class WalletHomeViewModel {
                 } catch is CancellationError {
                     return
                 } catch {
+                    // Every cause shows the same message, so record the real
+                    // one before it is discarded.
+                    AppLog.market.error(
+                        """
+                        Market enrichment failed, keeping portfolio values: \
+                        \(String(describing: error), privacy: .public)
+                        """
+                    )
                     guard generation == requestGeneration,
                           !Task.isCancelled else {
                         return

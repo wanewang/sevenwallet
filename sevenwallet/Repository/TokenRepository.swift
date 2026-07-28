@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 @MainActor
 final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
@@ -187,8 +188,24 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
                 try Task.checkCancellation()
                 guard retryIndex < retryDelays.count,
                       isRetryableMarketError(error) else {
+                    // The caller collapses every cause into one message, so
+                    // this is the only record of what actually failed.
+                    AppLog.market.error(
+                        """
+                        Token market request failed after \
+                        \(retryIndex + 1, privacy: .public) attempt(s): \
+                        \(String(describing: error), privacy: .public)
+                        """
+                    )
                     throw error
                 }
+                AppLog.market.warning(
+                    """
+                    Token market attempt \(retryIndex + 1, privacy: .public) \
+                    failed, retrying: \
+                    \(String(describing: error), privacy: .public)
+                    """
+                )
                 let delay = retryDelays[retryIndex]
                 retryIndex += 1
                 try await marketRetryDelay(delay)
