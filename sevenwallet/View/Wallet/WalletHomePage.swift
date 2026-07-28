@@ -248,13 +248,24 @@ struct WalletHomeView: View {
     }
 
     private func compactTokenError(_ message: String) -> some View {
-        Label(message, systemImage: "exclamationmark.circle")
-            .font(.caption)
-            .foregroundStyle(Theme.warn)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-            .accessibilityIdentifier("token-error-message")
+        HStack(spacing: 12) {
+            Label(message, systemImage: "exclamationmark.circle")
+                .font(.caption)
+                .foregroundStyle(Theme.warn)
+
+            Spacer(minLength: 8)
+
+            Button("Retry") {
+                Task { await viewModel.retryTokens() }
+            }
+            .font(.caption.weight(.semibold))
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("retry-tokens-button")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .accessibilityIdentifier("token-error-message")
     }
 }
 

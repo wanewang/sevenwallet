@@ -11,6 +11,7 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
     private let store: any WalletStoreProtocol
     private let dateProvider: DateProvider
     private let beforePortfolioTaskCleanup: ((EVMAddress) async -> Void)?
+    private let marketRetryDelay: @Sendable (Duration) async throws -> Void
     private var nativeTask: Task<[WalletToken], Swift.Error>?
     private var portfolioTasks: [EVMAddress: PortfolioTaskEntry] = [:]
     private var portfolioGenerations: [EVMAddress: Int] = [:]
@@ -20,12 +21,16 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
         remote: any TokenRemoteDataSourceProtocol,
         store: any WalletStoreProtocol,
         dateProvider: DateProvider = .system,
-        beforePortfolioTaskCleanup: ((EVMAddress) async -> Void)? = nil
+        beforePortfolioTaskCleanup: ((EVMAddress) async -> Void)? = nil,
+        marketRetryDelay: @escaping @Sendable (Duration) async throws -> Void = {
+            try await Task.sleep(for: $0)
+        }
     ) {
         self.remote = remote
         self.store = store
         self.dateProvider = dateProvider
         self.beforePortfolioTaskCleanup = beforePortfolioTaskCleanup
+        self.marketRetryDelay = marketRetryDelay
     }
 
     func nativeTokens(
@@ -121,6 +126,29 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
         }
     }
 
+    func tokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        let retryDelays: [Duration] = [.milliseconds(500), .seconds(1)]
+        var retryIndex = 0
+
+        while true {
+            try Task.checkCancellation()
+            do {
+                let value = try await remote.fetchTokenMarkets(address: address)
+                try Task.checkCancellation()
+                return value
+            } catch {
+                try Task.checkCancellation()
+                guard retryIndex < retryDelays.count,
+                      isRetryableMarketError(error) else {
+                    throw error
+                }
+                let delay = retryDelays[retryIndex]
+                retryIndex += 1
+                try await marketRetryDelay(delay)
+            }
+        }
+    }
+
     func suspendPortfolioLoads(address: EVMAddress) async {
         suspendedPortfolioAddresses.insert(address)
         portfolioGenerations[address, default: 0] += 1
@@ -141,6 +169,18 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
         policy == .force || cached.map {
             dateProvider.now().timeIntervalSince($0.fetchedAt) > 1_800
         } ?? true
+    }
+
+    private func isRetryableMarketError(_ error: any Error) -> Bool {
+        guard let error = error as? APIError else { return false }
+        switch error {
+        case .transport, .nonHTTPResponse:
+            return true
+        case .http(let status, _):
+            return status == 408 || status == 429 || 500...599 ~= status
+        case .invalidRequest, .invalidData:
+            return false
+        }
     }
 
     private func refreshNative() async throws -> [WalletToken] {
