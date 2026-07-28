@@ -505,6 +505,80 @@ struct TokenRepositoryTests {
         #expect(remote.marketCallCount == 1)
     }
 
+    @Test func simultaneousMarketRequestsShareOneAttemptChain() async throws {
+        let address = try makeRepositoryAddress()
+        let expected = makeTokenMarketPortfolio(address: address)
+        // Two outcomes so a lost-coalescing regression reports the extra call
+        // instead of starving the second request.
+        let remote = ScriptedTokenMarketRemote(
+            outcomes: [.success(expected), .success(expected)],
+            isGated: true
+        )
+        let repository = TokenRepository(remote: remote, store: WalletStoreSpy())
+
+        let first = Task { try await repository.tokenMarkets(address: address) }
+        await remote.waitUntilGated()
+        let second = Task { try await repository.tokenMarkets(address: address) }
+        await Task.yield()
+        remote.releaseGate()
+
+        #expect(try await first.value == expected)
+        #expect(try await second.value == expected)
+        #expect(remote.marketCallCount == 1)
+    }
+
+    @Test func suspendedAddressSkipsMarketRequestEntirely() async throws {
+        let address = try makeRepositoryAddress()
+        let remote = ScriptedTokenMarketRemote(outcomes: [
+            .success(makeTokenMarketPortfolio(address: address))
+        ])
+        let delays = MarketRetryDelayRecorder()
+        let repository = TokenRepository(
+            remote: remote,
+            store: WalletStoreSpy(),
+            marketRetryDelay: { delay in await delays.record(delay) }
+        )
+
+        await repository.suspendPortfolioLoads(address: address)
+
+        do {
+            _ = try await repository.tokenMarkets(address: address)
+            Issue.record("Expected the suspended address to be rejected")
+        } catch is CancellationError {
+        } catch {
+            Issue.record("Expected cancellation, got \(error)")
+        }
+
+        #expect(remote.marketCallCount == 0)
+        #expect(await delays.values.isEmpty)
+    }
+
+    @Test func suspendingDuringMarketBackoffStopsRemainingRetries() async throws {
+        let address = try makeRepositoryAddress()
+        let remote = ScriptedTokenMarketRemote(outcomes: [
+            .apiFailure(.transport("offline")),
+            .success(makeTokenMarketPortfolio(address: address))
+        ])
+        let repository = TokenRepository(
+            remote: remote,
+            store: WalletStoreSpy()
+        )
+
+        let load = Task { try await repository.tokenMarkets(address: address) }
+        while remote.marketCallCount == 0 { await Task.yield() }
+        await repository.suspendPortfolioLoads(address: address)
+
+        do {
+            _ = try await load.value
+            Issue.record("Expected the suspended load to stop")
+        } catch is CancellationError {
+        } catch {
+            Issue.record("Expected cancellation, got \(error)")
+        }
+
+        #expect(remote.marketCallCount == 1)
+    }
+
     private func fixedDate(_ date: Date) -> DateProvider {
         DateProvider(now: { date })
     }
@@ -519,10 +593,29 @@ private final class ScriptedTokenMarketRemote: TokenRemoteDataSourceProtocol {
     }
 
     private var outcomes: [Outcome]
+    private let isGated: Bool
+    private var isReleased = false
+    private var gates: [CheckedContinuation<Void, Never>] = []
+    private var gateWaiters: [CheckedContinuation<Void, Never>] = []
     private(set) var marketCallCount = 0
 
-    init(outcomes: [Outcome]) {
+    init(outcomes: [Outcome], isGated: Bool = false) {
         self.outcomes = outcomes
+        self.isGated = isGated
+    }
+
+    func waitUntilGated() async {
+        guard gates.isEmpty else { return }
+        await withCheckedContinuation { gateWaiters.append($0) }
+    }
+
+    // Releases every parked call and lets later calls through, so a regression
+    // that adds an extra request fails an expectation instead of hanging.
+    func releaseGate() {
+        isReleased = true
+        let parked = gates
+        gates = []
+        parked.forEach { $0.resume() }
     }
 
     func fetchNativeTokens() async throws -> [WalletToken] {
@@ -535,6 +628,14 @@ private final class ScriptedTokenMarketRemote: TokenRemoteDataSourceProtocol {
 
     func fetchTokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
         marketCallCount += 1
+        if isGated, !isReleased {
+            await withCheckedContinuation { continuation in
+                gates.append(continuation)
+                let waiters = gateWaiters
+                gateWaiters = []
+                waiters.forEach { $0.resume() }
+            }
+        }
         switch outcomes.removeFirst() {
         case .success(let value):
             return value

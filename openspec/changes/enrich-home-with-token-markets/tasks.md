@@ -7,6 +7,7 @@
 
 - [x] 2.1 Extend `TokenRepositoryProtocol` and its production, fixture, failing, and test-double implementations with an uncached token-market operation.
 - [x] 2.2 Implement transient error classification, three-attempt retry, cancellable 0.5-second/1-second backoff, and testable delay injection in `TokenRepository`.
+- [x] 2.3 Coalesce concurrent market requests per address, reject suspended addresses before contacting the remote, and cancel an address's in-flight attempt chain when it is suspended.
 
 ## 3. Home Enrichment
 

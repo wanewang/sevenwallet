@@ -5,10 +5,11 @@ The selected-wallet home screen currently stops after loading holdings from `/v1
 ## What Changes
 
 - After a selected-wallet portfolio load finishes successfully, fetch its token markets and enrich matching home token rows in memory.
-- Prefer CoinGecko price and 24-hour change per field, fall back to CoinMarketCap, and preserve an existing portfolio field when neither provider supplies that field.
+- Take the price and 24-hour change from the same provider, preferring CoinGecko unless only CoinMarketCap supplies a change, falling back to the other provider's price when the leader omits one, and preserving an existing portfolio field when neither provider supplies it.
 - Retry transient token-market failures twice with 0.5-second then 1-second backoff while keeping the token loading indicator visible.
 - Preserve the loaded portfolio after market retries fail, show a compact “Market data is unavailable.” error with a retry action, and rerun the full portfolio-then-market sequence on retry or pull-to-refresh.
 - Cancel the market request and backoff when the selected wallet load becomes obsolete.
+- Run at most one market attempt chain per address, joining concurrent callers to it, and stop that chain immediately when the address is suspended or deleted.
 - Leave native-token loading, wallet-list portfolio loading, and persistence unchanged.
 
 ## Capabilities

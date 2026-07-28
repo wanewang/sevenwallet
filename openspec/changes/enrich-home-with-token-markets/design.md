@@ -40,13 +40,19 @@ Native-token loads return after their existing stream and never request token ma
 
 Build a market lookup by `TokenMarket.id`, which shares the existing symbol plus normalized-address/native identity with `WalletToken`. Map the final portfolio in its original order and construct a copy only for matched tokens. Token identity, balance fields, metadata, and logo remain sourced from the portfolio. Market-only values are ignored, and unmatched holdings remain unchanged.
 
-For each display field independently, choose CoinGecko first and CoinMarketCap second. A chosen non-null market price replaces `WalletToken.priceUSD`; a chosen non-null change replaces `WalletToken.change24hPercent`. If neither provider supplies a field, retain the portfolio field. Provider objects remain unchanged and independent in `TokenMarketPortfolio`; the precedence exists only in the home enrichment mapping.
+Price and change travel together: the provider that supplies the 24-hour change also supplies the price, so both displayed fields describe the same provider snapshot rather than mixing two differently-timed quotes. CoinGecko leads unless it has no change and CoinMarketCap does. If the leading provider omits a price, fall back to the other provider's price, then to `WalletToken.priceUSD`. If neither provider supplies a change, retain `WalletToken.change24hPercent` and prefer the CoinGecko price. Provider objects remain unchanged and independent in `TokenMarketPortfolio`; the precedence exists only in the home enrichment mapping.
+
+Per-field independence was rejected because it can pair a CoinGecko price with a CoinMarketCap change captured at a different time, so the displayed percentage would not describe the displayed price.
 
 ### Keep retry policy narrow, bounded, and testable
 
 The repository performs at most three market attempts. It retries `APIError.transport`, `APIError.nonHTTPResponse`, HTTP 408, HTTP 429, and HTTP 5xx. It fails immediately for invalid requests, invalid data, all other HTTP statuses, and non-API errors. Before retry one it waits 0.5 seconds; before retry two it waits 1 second.
 
 Inject a small asynchronous delay closure into `TokenRepository` with a production default backed by `Task.sleep`. Tests can record durations and return immediately. Both the sleep and request loop remain cancellation-aware, and cancellation is never converted into a retryable market failure.
+
+Hold the attempt chain in a `marketTasks[address]` entry, mirroring the id-guarded `portfolioTasks` bookkeeping so a finishing caller cannot clear a newer entry. A concurrent caller awaits the existing task instead of starting a second chain; the caller that started the chain propagates its own cancellation to it, while a joiner leaving does not disturb the shared work. Because the chain is unstructured it outlives its callers, so `suspendPortfolioLoads(address:)` cancels it explicitly and `tokenMarkets(address:)` rejects a suspended address before contacting the remote — otherwise a deleted wallet would keep retrying for the full backoff.
+
+Coalescing means a pull-to-refresh arriving mid-chain joins the in-flight attempt rather than forcing a new request. That is acceptable here because `tokenMarkets(address:)` takes no `RefreshPolicy`, holds no cache, and reads a server-cached endpoint, so a forced second call would return the same payload.
 
 ### Treat market failure as non-blocking home state
 

@@ -7,6 +7,11 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
         let task: Task<TokenPortfolio, Swift.Error>
     }
 
+    private struct MarketTaskEntry {
+        let id: UUID
+        let task: Task<TokenMarketPortfolio, Swift.Error>
+    }
+
     private let remote: any TokenRemoteDataSourceProtocol
     private let store: any WalletStoreProtocol
     private let dateProvider: DateProvider
@@ -14,6 +19,7 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
     private let marketRetryDelay: @Sendable (Duration) async throws -> Void
     private var nativeTask: Task<[WalletToken], Swift.Error>?
     private var portfolioTasks: [EVMAddress: PortfolioTaskEntry] = [:]
+    private var marketTasks: [EVMAddress: MarketTaskEntry] = [:]
     private var portfolioGenerations: [EVMAddress: Int] = [:]
     private var suspendedPortfolioAddresses: Set<EVMAddress> = []
 
@@ -127,6 +133,47 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
     }
 
     func tokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        guard !suspendedPortfolioAddresses.contains(address) else {
+            throw CancellationError()
+        }
+        // A concurrent caller joins the in-flight attempt chain rather than
+        // starting a second one. Only the caller that started the chain cancels
+        // it, so a joiner going away leaves the shared work running.
+        if let entry = marketTasks[address] {
+            return try await entry.task.value
+        }
+
+        let id = UUID()
+        let task = Task { @MainActor in
+            try await fetchMarkets(address: address)
+        }
+        marketTasks[address] = MarketTaskEntry(id: id, task: task)
+        let result = await withTaskCancellationHandler {
+            await task.result
+        } onCancel: {
+            task.cancel()
+        }
+        removeMarketTask(address: address, id: id)
+        return try result.get()
+    }
+
+    func suspendPortfolioLoads(address: EVMAddress) async {
+        suspendedPortfolioAddresses.insert(address)
+        portfolioGenerations[address, default: 0] += 1
+        if let entry = marketTasks[address] {
+            entry.task.cancel()
+            _ = await entry.task.result
+            removeMarketTask(address: address, id: entry.id)
+        }
+        guard let entry = portfolioTasks[address] else { return }
+        entry.task.cancel()
+        _ = await entry.task.result
+        removePortfolioTask(address: address, id: entry.id)
+    }
+
+    private func fetchMarkets(
+        address: EVMAddress
+    ) async throws -> TokenMarketPortfolio {
         let retryDelays: [Duration] = [.milliseconds(500), .seconds(1)]
         var retryIndex = 0
 
@@ -147,15 +194,6 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
                 try await marketRetryDelay(delay)
             }
         }
-    }
-
-    func suspendPortfolioLoads(address: EVMAddress) async {
-        suspendedPortfolioAddresses.insert(address)
-        portfolioGenerations[address, default: 0] += 1
-        guard let entry = portfolioTasks[address] else { return }
-        entry.task.cancel()
-        _ = await entry.task.result
-        removePortfolioTask(address: address, id: entry.id)
     }
 
     func resumePortfolioLoads(address: EVMAddress) async {
@@ -235,5 +273,10 @@ final class TokenRepository: TokenRepositoryProtocol, PortfolioLoadControlling {
     private func removePortfolioTask(address: EVMAddress, id: UUID) {
         guard portfolioTasks[address]?.id == id else { return }
         portfolioTasks[address] = nil
+    }
+
+    private func removeMarketTask(address: EVMAddress, id: UUID) {
+        guard marketTasks[address]?.id == id else { return }
+        marketTasks[address] = nil
     }
 }

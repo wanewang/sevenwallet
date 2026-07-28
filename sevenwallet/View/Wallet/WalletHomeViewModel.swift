@@ -238,7 +238,7 @@ final class WalletHomeViewModel {
                 return
             }
 
-            if let wallet, let latestTokens {
+            if let wallet, let latestTokens, !latestTokens.isEmpty {
                 isLoadingTokens = true
                 do {
                     let markets = try await tokenRepository.tokenMarkets(
@@ -278,6 +278,21 @@ final class WalletHomeViewModel {
         )
         return tokens.map { token in
             guard let market = marketsByID[token.id] else { return token }
+            let coinGecko = market.coinGecko.map {
+                (priceUSD: $0.priceUSD, change24hPercent: $0.change24hPercent)
+            }
+            let coinMarketCap = market.coinMarketCap.map {
+                (priceUSD: $0.priceUSD, change24hPercent: $0.change24hPercent)
+            }
+
+            // The provider supplying the 24h change also supplies the price,
+            // so both fields describe the same snapshot. CoinGecko leads unless
+            // only CoinMarketCap has a change.
+            let coinGeckoLeads = coinGecko?.change24hPercent != nil
+                || coinMarketCap?.change24hPercent == nil
+            let leader = coinGeckoLeads ? coinGecko : coinMarketCap
+            let follower = coinGeckoLeads ? coinMarketCap : coinGecko
+
             return WalletToken(
                 tokenAddress: token.tokenAddress,
                 symbol: token.symbol,
@@ -288,14 +303,13 @@ final class WalletHomeViewModel {
                 isNative: token.isNative,
                 price: token.price,
                 logoURL: token.logoURL,
-                change24hPercent: market.coinGecko?.change24hPercent
-                    ?? market.coinMarketCap?.change24hPercent
+                change24hPercent: leader?.change24hPercent
                     ?? token.change24hPercent,
                 coinKey: token.coinKey,
                 marketCapUSD: token.marketCapUSD,
                 marketDataUpdatedAt: token.marketDataUpdatedAt,
-                priceUSD: market.coinGecko?.priceUSD
-                    ?? market.coinMarketCap?.priceUSD
+                priceUSD: leader?.priceUSD
+                    ?? follower?.priceUSD
                     ?? token.priceUSD
             )
         }

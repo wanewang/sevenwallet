@@ -1,7 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Selected-wallet home loads markets after holdings
-The selected-wallet home SHALL request token markets once after its portfolio stream finishes successfully with at least one portfolio value, and SHALL NOT request markets for native-token or wallet-list portfolio loads.
+The selected-wallet home SHALL request token markets once after its portfolio stream finishes successfully with at least one holding to enrich, and SHALL NOT request markets for native-token or wallet-list portfolio loads.
+
+#### Scenario: Portfolio holds no tokens
+- **WHEN** a selected-wallet portfolio stream finishes successfully with an empty holdings list
+- **THEN** the home does not request token markets and publishes no market error
 
 #### Scenario: Cached and fresh portfolio precede one market request
 - **WHEN** a selected-wallet portfolio load emits cached holdings, refreshes, emits fresh holdings, and finishes
@@ -22,13 +26,23 @@ The selected-wallet home SHALL request token markets once after its portfolio st
 ### Requirement: Home market data enriches matching portfolio tokens
 The home SHALL match market tokens to portfolio tokens by the shared symbol and normalized token-address/native key, preserve the portfolio's token membership, order, identity, balance, metadata, and logo, and change only supported market presentation fields.
 
+The provider that supplies a matched token's 24-hour change SHALL also supply its price, so both displayed fields describe the same provider snapshot. CoinGecko SHALL lead unless only CoinMarketCap supplies a 24-hour change. When the leading provider omits a price, the home SHALL use the other provider's price before falling back to the portfolio value.
+
 #### Scenario: Both providers populate a matched token
 - **WHEN** a matched market token has non-null CoinGecko and CoinMarketCap price and 24-hour-change values
 - **THEN** the home uses the CoinGecko price and change while preserving every non-market portfolio field
 
-#### Scenario: CoinGecko omits one field
-- **WHEN** CoinGecko omits a price or 24-hour change that CoinMarketCap supplies for a matched token
-- **THEN** the home uses CoinMarketCap for that missing field independently of the other field
+#### Scenario: Only CoinMarketCap supplies a 24-hour change
+- **WHEN** CoinGecko omits a matched token's 24-hour change and CoinMarketCap supplies both a change and a price
+- **THEN** the home uses the CoinMarketCap change and the CoinMarketCap price, discarding the CoinGecko price
+
+#### Scenario: The leading provider omits a price
+- **WHEN** CoinMarketCap supplies a matched token's 24-hour change but omits its price while CoinGecko supplies a price
+- **THEN** the home uses the CoinMarketCap change with the CoinGecko price
+
+#### Scenario: Neither provider supplies a 24-hour change
+- **WHEN** both providers omit a matched token's 24-hour change
+- **THEN** the home preserves the portfolio's 24-hour change and uses the CoinGecko price before the CoinMarketCap price
 
 #### Scenario: Both providers omit one field
 - **WHEN** both providers omit a price or 24-hour change for a matched token
@@ -40,6 +54,20 @@ The home SHALL match market tokens to portfolio tokens by the shared symbol and 
 
 ### Requirement: Token-market requests use bounded transient retries
 The token repository SHALL make one initial market request and at most two retries, waiting 0.5 seconds and then 1 second, and SHALL retry only transport errors, non-HTTP responses, HTTP 408, HTTP 429, and HTTP 5xx responses.
+
+The repository SHALL run at most one attempt chain per address at a time, joining a concurrent caller to the in-flight chain instead of starting a second one. It SHALL reject a market request for a suspended address without contacting the remote, and suspending an address SHALL cancel that address's in-flight attempt chain rather than letting its remaining retries run.
+
+#### Scenario: Concurrent callers request the same address
+- **WHEN** a second market request for an address starts while the first is still in flight
+- **THEN** both callers receive the first chain's result and the remote is contacted once
+
+#### Scenario: Address is already suspended
+- **WHEN** a market request starts for an address whose portfolio loads are suspended
+- **THEN** the repository reports cancellation immediately without contacting the remote or waiting a retry delay
+
+#### Scenario: Address is suspended mid-flight
+- **WHEN** an address is suspended while its market attempt chain is waiting to retry
+- **THEN** the chain stops without a further attempt and the caller observes cancellation
 
 #### Scenario: Transient failures recover
 - **WHEN** the first two market attempts fail transiently and the third succeeds

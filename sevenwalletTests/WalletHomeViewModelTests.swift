@@ -207,6 +207,7 @@ struct WalletHomeViewModelTests {
 
         let load = Task { await home.load(wallet: wallet) }
         await repository.waitUntilPortfolioGated()
+        await waitUntil { !home.tokens.isEmpty && home.isLoadingTokens }
 
         #expect(repository.requestedMarketAddresses.isEmpty)
         #expect(home.tokens.first?.formattedPrice == "$1,900.00")
@@ -261,6 +262,7 @@ struct WalletHomeViewModelTests {
             tokens: [
                 makeTokenMarket(
                     coinGeckoPrice: 2_000,
+                    coinGeckoChange: 3,
                     coinMarketCapPrice: 1_900,
                     coinMarketCapChange: 2
                 ),
@@ -288,7 +290,7 @@ struct WalletHomeViewModelTests {
         #expect(home.tokens.map(\.symbol) == ["ETH", "USDC", "BTC"])
         #expect(home.tokens.map(\.id) == portfolio.tokens.map(\.id))
         #expect(home.tokens[0].marketPrice == 2_000)
-        #expect(home.tokens[0].dailyChange == 2)
+        #expect(home.tokens[0].dailyChange == 3)
         #expect(home.tokens[0].balance == 2)
         #expect(home.tokens[0].logoURL == logo)
         #expect(home.tokens[1].marketPrice == 1)
@@ -296,6 +298,140 @@ struct WalletHomeViewModelTests {
         #expect(home.tokens[2].marketPrice == 30_000)
         #expect(home.tokens[2].dailyChange == -1)
         #expect(home.walletCard?.totalValue == 94_010)
+    }
+
+    @Test
+    func changeProviderAlsoSuppliesPriceWithFallbacks() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .purple)
+        let pairAddress = "0x0000000000000000000000000000000000000001"
+        let followerAddress = "0x0000000000000000000000000000000000000002"
+        let neitherAddress = "0x0000000000000000000000000000000000000003"
+        let portfolio = TokenPortfolio(
+            address: wallet.address,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: [
+                makeHomeToken(
+                    symbol: "ETH",
+                    name: "Ether",
+                    balance: 1,
+                    price: 10,
+                    change: Decimal(string: "9.9")
+                ),
+                makeHomeToken(
+                    symbol: "USDC",
+                    name: "USD Coin",
+                    tokenAddress: pairAddress,
+                    balance: 1,
+                    price: 10,
+                    change: Decimal(string: "9.9")
+                ),
+                makeHomeToken(
+                    symbol: "BTC",
+                    name: "Bitcoin",
+                    tokenAddress: followerAddress,
+                    balance: 1,
+                    price: 10,
+                    change: Decimal(string: "9.9")
+                ),
+                makeHomeToken(
+                    symbol: "SOL",
+                    name: "Solana",
+                    tokenAddress: neitherAddress,
+                    balance: 1,
+                    price: 10,
+                    change: Decimal(string: "9.9")
+                )
+            ]
+        )
+        let markets = makeTokenMarketPortfolio(
+            address: wallet.address,
+            tokens: [
+                // CoinGecko supplies the change, so it supplies the price.
+                makeTokenMarket(
+                    coinGeckoPrice: 2_000,
+                    coinGeckoChange: 3,
+                    coinMarketCapPrice: 1_900,
+                    coinMarketCapChange: 2
+                ),
+                // Only CoinMarketCap has a change: its price travels with it.
+                makeTokenMarket(
+                    symbol: "USDC",
+                    name: "USD Coin",
+                    tokenAddress: pairAddress,
+                    coinGeckoPrice: 2_000,
+                    coinMarketCapPrice: 1_900,
+                    coinMarketCapChange: 2
+                ),
+                // CoinMarketCap wins the change but has no price, so the
+                // follower's price is used rather than the portfolio value.
+                makeTokenMarket(
+                    symbol: "BTC",
+                    name: "Bitcoin",
+                    tokenAddress: followerAddress,
+                    coinGeckoPrice: 2_000,
+                    coinMarketCapChange: 2
+                ),
+                // Neither provider has a change: price still prefers CoinGecko
+                // and the portfolio change is preserved.
+                makeTokenMarket(
+                    symbol: "SOL",
+                    name: "Solana",
+                    tokenAddress: neitherAddress,
+                    coinGeckoPrice: 2_000,
+                    coinMarketCapPrice: 1_900
+                )
+            ]
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[.fresh(portfolio)]],
+            marketScripts: [.init(result: .success(markets))]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+
+        #expect(home.tokens[0].marketPrice == 2_000)
+        #expect(home.tokens[0].dailyChange == 3)
+        #expect(home.tokens[1].marketPrice == 1_900)
+        #expect(home.tokens[1].dailyChange == 2)
+        #expect(home.tokens[2].marketPrice == 2_000)
+        #expect(home.tokens[2].dailyChange == 2)
+        #expect(home.tokens[3].marketPrice == 2_000)
+        #expect(home.tokens[3].dailyChange == Decimal(string: "9.9"))
+    }
+
+    @Test
+    func neitherProviderSuppliesValuesKeepsPortfolioPriceAndChange() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .purple)
+        let portfolio = TokenPortfolio(
+            address: wallet.address,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: [
+                makeHomeToken(
+                    symbol: "ETH",
+                    name: "Ether",
+                    balance: 1,
+                    price: 1_500,
+                    change: Decimal(string: "0.4")
+                )
+            ]
+        )
+        let markets = makeTokenMarketPortfolio(
+            address: wallet.address,
+            tokens: [makeTokenMarket(coinMarketCapChange: 2)]
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[.fresh(portfolio)]],
+            marketScripts: [.init(result: .success(markets))]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+
+        #expect(home.tokens[0].marketPrice == 1_500)
+        #expect(home.tokens[0].dailyChange == 2)
     }
 
     @Test
@@ -414,6 +550,29 @@ struct WalletHomeViewModelTests {
         #expect(home.walletCard?.id == replacement.id)
         #expect(home.tokens.first?.marketPrice == 2_000)
         #expect(home.tokenErrorMessage == nil)
+    }
+
+    @Test
+    func emptyPortfolioDoesNotRequestMarkets() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .blue)
+        let empty = TokenPortfolio(
+            address: wallet.address,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: []
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[.fresh(empty)]],
+            marketScripts: [.init(result: .failure(.remoteFailure))]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+
+        #expect(repository.requestedMarketAddresses.isEmpty)
+        #expect(home.tokens.isEmpty)
+        #expect(home.tokenErrorMessage == nil)
+        #expect(!home.isLoadingTokens)
     }
 
     @Test
@@ -1030,6 +1189,13 @@ struct WalletHomeViewModelTests {
     private func waitForLoading(_ home: WalletHomeViewModel) async {
         for _ in 0..<100 {
             guard !home.isLoadingTokens else { return }
+            await Task.yield()
+        }
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<100 {
+            guard !condition() else { return }
             await Task.yield()
         }
     }
