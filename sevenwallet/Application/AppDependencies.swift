@@ -367,6 +367,15 @@ private final class FixtureTokenRepository: TokenRepositoryProtocol {
             }
         }
     }
+
+    func tokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        TokenMarketPortfolio(
+            wallet: address,
+            network: "ethereum",
+            portfolioFetchedAt: Date(timeIntervalSince1970: 0),
+            tokens: []
+        )
+    }
 }
 
 @MainActor
@@ -394,6 +403,10 @@ private final class FailingTokenRepository: TokenRepositoryProtocol {
             continuation.yield(.refreshing)
             continuation.finish(throwing: error)
         }
+    }
+
+    func tokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        throw error
     }
 }
 

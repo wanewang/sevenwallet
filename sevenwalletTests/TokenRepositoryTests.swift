@@ -365,8 +365,293 @@ struct TokenRepositoryTests {
         #expect(await remote.portfolioCallCounts[address] == 2)
     }
 
+    @Test func tokenMarketsRetryTwiceWithExactBackoffWithoutUsingStore() async throws {
+        let address = try makeRepositoryAddress()
+        let expected = makeTokenMarketPortfolio(address: address)
+        let remote = ScriptedTokenMarketRemote(outcomes: [
+            .apiFailure(.transport("offline")),
+            .apiFailure(.http(status: 503, message: nil)),
+            .success(expected)
+        ])
+        let store = WalletStoreSpy()
+        let delays = MarketRetryDelayRecorder()
+        let repository = TokenRepository(
+            remote: remote,
+            store: store,
+            marketRetryDelay: { delay in await delays.record(delay) }
+        )
+
+        let value = try await repository.tokenMarkets(address: address)
+
+        #expect(value == expected)
+        #expect(remote.marketCallCount == 3)
+        #expect(await delays.values == [.milliseconds(500), .seconds(1)])
+        #expect(await store.portfolioLoadCounts.isEmpty)
+        #expect(await store.portfolioSaveDates.isEmpty)
+        #expect(await store.nativeSaveDates.isEmpty)
+    }
+
+    @Test func tokenMarketsRetriesEveryTransientErrorClass() async throws {
+        let address = try makeRepositoryAddress()
+        let expected = makeTokenMarketPortfolio(address: address)
+        let errors: [APIError] = [
+            .transport("offline"),
+            .nonHTTPResponse,
+            .http(status: 408, message: nil),
+            .http(status: 429, message: nil),
+            .http(status: 500, message: nil),
+            .http(status: 599, message: nil)
+        ]
+
+        for error in errors {
+            let remote = ScriptedTokenMarketRemote(outcomes: [
+                .apiFailure(error),
+                .success(expected)
+            ])
+            let repository = TokenRepository(
+                remote: remote,
+                store: WalletStoreSpy(),
+                marketRetryDelay: { _ in }
+            )
+
+            #expect(try await repository.tokenMarkets(address: address) == expected)
+            #expect(remote.marketCallCount == 2)
+        }
+    }
+
+    @Test func tokenMarketsStopAfterThirdTransientFailure() async throws {
+        let address = try makeRepositoryAddress()
+        let remote = ScriptedTokenMarketRemote(outcomes: [
+            .apiFailure(.transport("first")),
+            .apiFailure(.transport("second")),
+            .apiFailure(.transport("third")),
+            .success(makeTokenMarketPortfolio(address: address))
+        ])
+        let delays = MarketRetryDelayRecorder()
+        let repository = TokenRepository(
+            remote: remote,
+            store: WalletStoreSpy(),
+            marketRetryDelay: { delay in await delays.record(delay) }
+        )
+
+        do {
+            _ = try await repository.tokenMarkets(address: address)
+            Issue.record("Expected the final transient error")
+        } catch {
+            #expect(error as? APIError == .transport("third"))
+        }
+
+        #expect(remote.marketCallCount == 3)
+        #expect(await delays.values == [.milliseconds(500), .seconds(1)])
+    }
+
+    @Test func tokenMarketsFailImmediatelyForPermanentAndUnknownErrors() async throws {
+        let address = try makeRepositoryAddress()
+        let expected = makeTokenMarketPortfolio(address: address)
+        let failures: [ScriptedTokenMarketRemote.Outcome] = [
+            .apiFailure(.invalidRequest),
+            .apiFailure(.invalidData),
+            .apiFailure(.http(status: 404, message: nil)),
+            .otherFailure
+        ]
+
+        for failure in failures {
+            let remote = ScriptedTokenMarketRemote(outcomes: [
+                failure,
+                .success(expected)
+            ])
+            let delays = MarketRetryDelayRecorder()
+            let repository = TokenRepository(
+                remote: remote,
+                store: WalletStoreSpy(),
+                marketRetryDelay: { delay in await delays.record(delay) }
+            )
+
+            do {
+                _ = try await repository.tokenMarkets(address: address)
+                Issue.record("Expected a fail-fast market error")
+            } catch {}
+
+            #expect(remote.marketCallCount == 1)
+            #expect(await delays.values.isEmpty)
+        }
+    }
+
+    @Test func cancellationDuringMarketBackoffStopsRetries() async throws {
+        let address = try makeRepositoryAddress()
+        let remote = ScriptedTokenMarketRemote(outcomes: [
+            .apiFailure(.transport("offline")),
+            .success(makeTokenMarketPortfolio(address: address))
+        ])
+        let repository = TokenRepository(
+            remote: remote,
+            store: WalletStoreSpy()
+        )
+
+        let load = Task {
+            try await repository.tokenMarkets(address: address)
+        }
+        while remote.marketCallCount == 0 { await Task.yield() }
+        load.cancel()
+
+        do {
+            _ = try await load.value
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {
+        } catch {
+            Issue.record("Expected cancellation, got \(error)")
+        }
+
+        #expect(remote.marketCallCount == 1)
+    }
+
+    @Test func simultaneousMarketRequestsShareOneAttemptChain() async throws {
+        let address = try makeRepositoryAddress()
+        let expected = makeTokenMarketPortfolio(address: address)
+        // Two outcomes so a lost-coalescing regression reports the extra call
+        // instead of starving the second request.
+        let remote = ScriptedTokenMarketRemote(
+            outcomes: [.success(expected), .success(expected)],
+            isGated: true
+        )
+        let repository = TokenRepository(remote: remote, store: WalletStoreSpy())
+
+        let first = Task { try await repository.tokenMarkets(address: address) }
+        await remote.waitUntilGated()
+        let second = Task { try await repository.tokenMarkets(address: address) }
+        await Task.yield()
+        remote.releaseGate()
+
+        #expect(try await first.value == expected)
+        #expect(try await second.value == expected)
+        #expect(remote.marketCallCount == 1)
+    }
+
+    @Test func suspendedAddressSkipsMarketRequestEntirely() async throws {
+        let address = try makeRepositoryAddress()
+        let remote = ScriptedTokenMarketRemote(outcomes: [
+            .success(makeTokenMarketPortfolio(address: address))
+        ])
+        let delays = MarketRetryDelayRecorder()
+        let repository = TokenRepository(
+            remote: remote,
+            store: WalletStoreSpy(),
+            marketRetryDelay: { delay in await delays.record(delay) }
+        )
+
+        await repository.suspendPortfolioLoads(address: address)
+
+        do {
+            _ = try await repository.tokenMarkets(address: address)
+            Issue.record("Expected the suspended address to be rejected")
+        } catch is CancellationError {
+        } catch {
+            Issue.record("Expected cancellation, got \(error)")
+        }
+
+        #expect(remote.marketCallCount == 0)
+        #expect(await delays.values.isEmpty)
+    }
+
+    @Test func suspendingDuringMarketBackoffStopsRemainingRetries() async throws {
+        let address = try makeRepositoryAddress()
+        let remote = ScriptedTokenMarketRemote(outcomes: [
+            .apiFailure(.transport("offline")),
+            .success(makeTokenMarketPortfolio(address: address))
+        ])
+        let repository = TokenRepository(
+            remote: remote,
+            store: WalletStoreSpy()
+        )
+
+        let load = Task { try await repository.tokenMarkets(address: address) }
+        while remote.marketCallCount == 0 { await Task.yield() }
+        await repository.suspendPortfolioLoads(address: address)
+
+        do {
+            _ = try await load.value
+            Issue.record("Expected the suspended load to stop")
+        } catch is CancellationError {
+        } catch {
+            Issue.record("Expected cancellation, got \(error)")
+        }
+
+        #expect(remote.marketCallCount == 1)
+    }
+
     private func fixedDate(_ date: Date) -> DateProvider {
         DateProvider(now: { date })
+    }
+}
+
+@MainActor
+private final class ScriptedTokenMarketRemote: TokenRemoteDataSourceProtocol {
+    enum Outcome {
+        case success(TokenMarketPortfolio)
+        case apiFailure(APIError)
+        case otherFailure
+    }
+
+    private var outcomes: [Outcome]
+    private let isGated: Bool
+    private var isReleased = false
+    private var gates: [CheckedContinuation<Void, Never>] = []
+    private var gateWaiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var marketCallCount = 0
+
+    init(outcomes: [Outcome], isGated: Bool = false) {
+        self.outcomes = outcomes
+        self.isGated = isGated
+    }
+
+    func waitUntilGated() async {
+        guard gates.isEmpty else { return }
+        await withCheckedContinuation { gateWaiters.append($0) }
+    }
+
+    // Releases every parked call and lets later calls through, so a regression
+    // that adds an extra request fails an expectation instead of hanging.
+    func releaseGate() {
+        isReleased = true
+        let parked = gates
+        gates = []
+        parked.forEach { $0.resume() }
+    }
+
+    func fetchNativeTokens() async throws -> [WalletToken] {
+        throw RepositoryTestError.remoteFailure
+    }
+
+    func fetchPortfolio(address: EVMAddress) async throws -> TokenPortfolio {
+        throw RepositoryTestError.remoteFailure
+    }
+
+    func fetchTokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        marketCallCount += 1
+        if isGated, !isReleased {
+            await withCheckedContinuation { continuation in
+                gates.append(continuation)
+                let waiters = gateWaiters
+                gateWaiters = []
+                waiters.forEach { $0.resume() }
+            }
+        }
+        switch outcomes.removeFirst() {
+        case .success(let value):
+            return value
+        case .apiFailure(let error):
+            throw error
+        case .otherFailure:
+            throw RepositoryTestError.remoteFailure
+        }
+    }
+}
+
+private actor MarketRetryDelayRecorder {
+    private(set) var values: [Duration] = []
+
+    func record(_ value: Duration) {
+        values.append(value)
     }
 }
 

@@ -382,6 +382,10 @@ final class ScriptedTokenRepository: TokenRepositoryProtocol {
         }
     }
 
+    func tokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        makeTokenMarketPortfolio(address: address)
+    }
+
     func waitUntilGated(request requestIndex: Int = 0) async {
         guard gates[requestIndex] == nil else { return }
         await withCheckedContinuation { continuation in
@@ -474,6 +478,30 @@ final class PortfolioTokenRepositorySpy: TokenRepositoryProtocol {
         }
     }
 
+    struct MarketScript: Sendable {
+        let result: Result<TokenMarketPortfolio, RepositoryTestError>
+        let isGated: Bool
+
+        init(result: Result<TokenMarketPortfolio, RepositoryTestError>) {
+            self.result = result
+            isGated = false
+        }
+
+        static func gated(
+            result: Result<TokenMarketPortfolio, RepositoryTestError>
+        ) -> MarketScript {
+            MarketScript(result: result, isGated: true)
+        }
+
+        private init(
+            result: Result<TokenMarketPortfolio, RepositoryTestError>,
+            isGated: Bool
+        ) {
+            self.result = result
+            self.isGated = isGated
+        }
+    }
+
     private struct PortfolioGate {
         let continuation: AsyncThrowingStream<
             PortfolioEvent,
@@ -483,33 +511,46 @@ final class PortfolioTokenRepositorySpy: TokenRepositoryProtocol {
         let error: RepositoryTestError?
     }
 
+    private struct MarketGate {
+        let continuation: CheckedContinuation<TokenMarketPortfolio, Swift.Error>
+        let result: Result<TokenMarketPortfolio, RepositoryTestError>
+    }
+
     private var nativeScripts: [[NativeEvent]]
     private var portfolioScripts: [PortfolioScript]
+    private var marketScripts: [MarketScript]
     private var portfolioGates: [Int: PortfolioGate] = [:]
     private var portfolioGateWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
     private var portfolioTerminationWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
+    private var marketGates: [Int: MarketGate] = [:]
+    private var marketGateWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
     private(set) var requestedNativePolicies: [RefreshPolicy] = []
     private(set) var requestedPortfolioAddresses: [EVMAddress] = []
     private(set) var requestedPortfolioPolicies: [RefreshPolicy] = []
+    private(set) var requestedMarketAddresses: [EVMAddress] = []
     private(set) var terminatedPortfolioRequests: Set<Int> = []
 
     init(
         nativeScripts: [[NativeEvent]] = [],
         portfolioScripts: [[PortfolioEvent]] = [],
-        holdsPortfolioOpen: Bool = false
+        holdsPortfolioOpen: Bool = false,
+        marketScripts: [MarketScript] = []
     ) {
         self.nativeScripts = nativeScripts
         self.portfolioScripts = portfolioScripts.map {
             PortfolioScript(events: $0, holdsOpen: holdsPortfolioOpen)
         }
+        self.marketScripts = marketScripts
     }
 
     init(
         nativeScripts: [[NativeEvent]] = [],
-        portfolioRequestScripts: [PortfolioScript]
+        portfolioRequestScripts: [PortfolioScript],
+        marketScripts: [MarketScript] = []
     ) {
         self.nativeScripts = nativeScripts
         portfolioScripts = portfolioRequestScripts
+        self.marketScripts = marketScripts
     }
 
     func nativeTokens(
@@ -554,6 +595,27 @@ final class PortfolioTokenRepositorySpy: TokenRepositoryProtocol {
         }
     }
 
+    func tokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        let requestIndex = requestedMarketAddresses.count
+        requestedMarketAddresses.append(address)
+        guard !marketScripts.isEmpty else {
+            return makeTokenMarketPortfolio(address: address)
+        }
+
+        let script = marketScripts.removeFirst()
+        guard script.isGated else { return try script.result.get() }
+        return try await withCheckedThrowingContinuation { continuation in
+            marketGates[requestIndex] = MarketGate(
+                continuation: continuation,
+                result: script.result
+            )
+            let waiters = marketGateWaiters.removeValue(
+                forKey: requestIndex
+            ) ?? []
+            waiters.forEach { $0.resume() }
+        }
+    }
+
     func waitUntilPortfolioGated(request requestIndex: Int = 0) async {
         guard portfolioGates[requestIndex] == nil else { return }
         await withCheckedContinuation { continuation in
@@ -577,6 +639,25 @@ final class PortfolioTokenRepositorySpy: TokenRepositoryProtocol {
             portfolioTerminationWaiters[requestIndex, default: []].append(
                 continuation
             )
+        }
+    }
+
+    func waitUntilMarketGated(request requestIndex: Int = 0) async {
+        guard marketGates[requestIndex] == nil else { return }
+        await withCheckedContinuation { continuation in
+            marketGateWaiters[requestIndex, default: []].append(continuation)
+        }
+    }
+
+    func releaseMarketGate(request requestIndex: Int = 0) {
+        guard let gate = marketGates.removeValue(forKey: requestIndex) else {
+            return
+        }
+        switch gate.result {
+        case .success(let value):
+            gate.continuation.resume(returning: value)
+        case .failure(let error):
+            gate.continuation.resume(throwing: error)
         }
     }
 
@@ -1015,6 +1096,51 @@ func makeRepositoryPortfolio(address: EVMAddress, price: String) -> TokenPortfol
         fetchedAt: nil,
         network: "ethereum",
         tokens: [makeRepositoryToken(price: price)]
+    )
+}
+
+func makeTokenMarketPortfolio(
+    address: EVMAddress,
+    tokens: [TokenMarket] = []
+) -> TokenMarketPortfolio {
+    TokenMarketPortfolio(
+        wallet: address,
+        network: "ethereum",
+        portfolioFetchedAt: Date(timeIntervalSince1970: 0),
+        tokens: tokens
+    )
+}
+
+func makeTokenMarket(
+    symbol: String = "ETH",
+    name: String = "Ether",
+    tokenAddress: String? = nil,
+    balance: Decimal = 1,
+    coinGeckoPrice: Decimal? = nil,
+    coinGeckoChange: Decimal? = nil,
+    coinMarketCapPrice: Decimal? = nil,
+    coinMarketCapChange: Decimal? = nil
+) -> TokenMarket {
+    TokenMarket(
+        tokenAddress: tokenAddress,
+        symbol: symbol,
+        name: name,
+        decimals: 18,
+        balance: balance,
+        coinGecko: coinGeckoPrice == nil && coinGeckoChange == nil
+            ? nil
+            : CoinGeckoMarket(
+                id: symbol.lowercased(),
+                priceUSD: coinGeckoPrice,
+                change24hPercent: coinGeckoChange
+            ),
+        coinMarketCap: coinMarketCapPrice == nil && coinMarketCapChange == nil
+            ? nil
+            : CoinMarketCapMarket(
+                id: 1,
+                priceUSD: coinMarketCapPrice,
+                change24hPercent: coinMarketCapChange
+            )
     )
 }
 

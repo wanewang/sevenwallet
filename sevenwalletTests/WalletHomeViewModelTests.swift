@@ -184,6 +184,414 @@ struct WalletHomeViewModelTests {
     }
 
     @Test
+    func selectedWalletRequestsMarketsOnceAfterCachedAndFreshPortfolioFinish() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .blue)
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioRequestScripts: [
+                .gated(
+                    before: [
+                        .cached(makeRepositoryPortfolio(
+                            address: wallet.address,
+                            price: "1900"
+                        )),
+                        .refreshing
+                    ],
+                    after: [.fresh(makeRepositoryPortfolio(
+                        address: wallet.address,
+                        price: "2000"
+                    ))]
+                )
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        let load = Task { await home.load(wallet: wallet) }
+        await repository.waitUntilPortfolioGated()
+        await waitUntil { !home.tokens.isEmpty && home.isLoadingTokens }
+
+        #expect(repository.requestedMarketAddresses.isEmpty)
+        #expect(home.tokens.first?.formattedPrice == "$1,900.00")
+        #expect(home.isLoadingTokens)
+
+        repository.releasePortfolioGate()
+        await load.value
+
+        #expect(repository.requestedMarketAddresses == [wallet.address])
+        #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+    }
+
+    @Test
+    func tokenMarketsEnrichMatchedFieldsWithoutChangingPortfolioShape() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .purple)
+        let logo = URL(string: "https://example.com/eth.png")
+        let usdcAddress = "0x0000000000000000000000000000000000000001"
+        let btcAddress = "0x0000000000000000000000000000000000000002"
+        let portfolio = TokenPortfolio(
+            address: wallet.address,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: [
+                makeHomeToken(
+                    symbol: "ETH",
+                    name: "Ether",
+                    balance: 2,
+                    price: 1_000,
+                    change: Decimal(string: "0.5"),
+                    logoURL: logo
+                ),
+                makeHomeToken(
+                    symbol: "USDC",
+                    name: "USD Coin",
+                    tokenAddress: usdcAddress,
+                    balance: 10,
+                    price: 1,
+                    change: Decimal(string: "0.1")
+                ),
+                makeHomeToken(
+                    symbol: "BTC",
+                    name: "Bitcoin",
+                    tokenAddress: btcAddress,
+                    balance: 3,
+                    price: 30_000,
+                    change: -1
+                )
+            ]
+        )
+        let markets = makeTokenMarketPortfolio(
+            address: wallet.address,
+            tokens: [
+                makeTokenMarket(
+                    coinGeckoPrice: 2_000,
+                    coinGeckoChange: 3,
+                    coinMarketCapPrice: 1_900,
+                    coinMarketCapChange: 2
+                ),
+                makeTokenMarket(
+                    symbol: "USDC",
+                    name: "USD Coin",
+                    tokenAddress: usdcAddress
+                ),
+                makeTokenMarket(
+                    symbol: "SOL",
+                    name: "Solana",
+                    tokenAddress: "0x0000000000000000000000000000000000000003",
+                    coinGeckoPrice: 100
+                )
+            ]
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[.fresh(portfolio)]],
+            marketScripts: [.init(result: .success(markets))]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+
+        #expect(home.tokens.map(\.symbol) == ["ETH", "USDC", "BTC"])
+        #expect(home.tokens.map(\.id) == portfolio.tokens.map(\.id))
+        #expect(home.tokens[0].marketPrice == 2_000)
+        #expect(home.tokens[0].dailyChange == 3)
+        #expect(home.tokens[0].balance == 2)
+        #expect(home.tokens[0].logoURL == logo)
+        #expect(home.tokens[1].marketPrice == 1)
+        #expect(home.tokens[1].dailyChange == Decimal(string: "0.1"))
+        #expect(home.tokens[2].marketPrice == 30_000)
+        #expect(home.tokens[2].dailyChange == -1)
+        #expect(home.walletCard?.totalValue == 94_010)
+    }
+
+    @Test
+    func changeProviderAlsoSuppliesPriceWithFallbacks() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .purple)
+        let pairAddress = "0x0000000000000000000000000000000000000001"
+        let followerAddress = "0x0000000000000000000000000000000000000002"
+        let neitherAddress = "0x0000000000000000000000000000000000000003"
+        let portfolio = TokenPortfolio(
+            address: wallet.address,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: [
+                makeHomeToken(
+                    symbol: "ETH",
+                    name: "Ether",
+                    balance: 1,
+                    price: 10,
+                    change: Decimal(string: "9.9")
+                ),
+                makeHomeToken(
+                    symbol: "USDC",
+                    name: "USD Coin",
+                    tokenAddress: pairAddress,
+                    balance: 1,
+                    price: 10,
+                    change: Decimal(string: "9.9")
+                ),
+                makeHomeToken(
+                    symbol: "BTC",
+                    name: "Bitcoin",
+                    tokenAddress: followerAddress,
+                    balance: 1,
+                    price: 10,
+                    change: Decimal(string: "9.9")
+                ),
+                makeHomeToken(
+                    symbol: "SOL",
+                    name: "Solana",
+                    tokenAddress: neitherAddress,
+                    balance: 1,
+                    price: 10,
+                    change: Decimal(string: "9.9")
+                )
+            ]
+        )
+        let markets = makeTokenMarketPortfolio(
+            address: wallet.address,
+            tokens: [
+                // CoinGecko supplies the change, so it supplies the price.
+                makeTokenMarket(
+                    coinGeckoPrice: 2_000,
+                    coinGeckoChange: 3,
+                    coinMarketCapPrice: 1_900,
+                    coinMarketCapChange: 2
+                ),
+                // Only CoinMarketCap has a change: its price travels with it.
+                makeTokenMarket(
+                    symbol: "USDC",
+                    name: "USD Coin",
+                    tokenAddress: pairAddress,
+                    coinGeckoPrice: 2_000,
+                    coinMarketCapPrice: 1_900,
+                    coinMarketCapChange: 2
+                ),
+                // CoinMarketCap wins the change but has no price, so the
+                // follower's price is used rather than the portfolio value.
+                makeTokenMarket(
+                    symbol: "BTC",
+                    name: "Bitcoin",
+                    tokenAddress: followerAddress,
+                    coinGeckoPrice: 2_000,
+                    coinMarketCapChange: 2
+                ),
+                // Neither provider has a change: price still prefers CoinGecko
+                // and the portfolio change is preserved.
+                makeTokenMarket(
+                    symbol: "SOL",
+                    name: "Solana",
+                    tokenAddress: neitherAddress,
+                    coinGeckoPrice: 2_000,
+                    coinMarketCapPrice: 1_900
+                )
+            ]
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[.fresh(portfolio)]],
+            marketScripts: [.init(result: .success(markets))]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+
+        #expect(home.tokens[0].marketPrice == 2_000)
+        #expect(home.tokens[0].dailyChange == 3)
+        #expect(home.tokens[1].marketPrice == 1_900)
+        #expect(home.tokens[1].dailyChange == 2)
+        #expect(home.tokens[2].marketPrice == 2_000)
+        #expect(home.tokens[2].dailyChange == 2)
+        #expect(home.tokens[3].marketPrice == 2_000)
+        #expect(home.tokens[3].dailyChange == Decimal(string: "9.9"))
+    }
+
+    @Test
+    func neitherProviderSuppliesValuesKeepsPortfolioPriceAndChange() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .purple)
+        let portfolio = TokenPortfolio(
+            address: wallet.address,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: [
+                makeHomeToken(
+                    symbol: "ETH",
+                    name: "Ether",
+                    balance: 1,
+                    price: 1_500,
+                    change: Decimal(string: "0.4")
+                )
+            ]
+        )
+        let markets = makeTokenMarketPortfolio(
+            address: wallet.address,
+            tokens: [makeTokenMarket(coinMarketCapChange: 2)]
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[.fresh(portfolio)]],
+            marketScripts: [.init(result: .success(markets))]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+
+        #expect(home.tokens[0].marketPrice == 1_500)
+        #expect(home.tokens[0].dailyChange == 2)
+    }
+
+    @Test
+    func marketLoadingKeepsPortfolioVisibleThenShowsRecoverableError() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .blue)
+        let portfolio = makeRepositoryPortfolio(
+            address: wallet.address,
+            price: "2000"
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[.fresh(portfolio)]],
+            marketScripts: [.gated(result: .failure(.remoteFailure))]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        let load = Task { await home.load(wallet: wallet) }
+        await repository.waitUntilMarketGated()
+
+        #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+        #expect(home.isLoadingTokens)
+        #expect(home.tokenErrorMessage == nil)
+
+        repository.releaseMarketGate()
+        await load.value
+
+        #expect(home.tokens.first?.formattedPrice == "$2,000.00")
+        #expect(!home.isLoadingTokens)
+        #expect(home.tokenErrorMessage == "Market data is unavailable.")
+    }
+
+    @Test
+    func retryAfterMarketFailureRunsPortfolioThenMarketsAgain() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .blue)
+        let portfolio = makeRepositoryPortfolio(
+            address: wallet.address,
+            price: "1000"
+        )
+        let markets = makeTokenMarketPortfolio(
+            address: wallet.address,
+            tokens: [makeTokenMarket(coinGeckoPrice: 2_000)]
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [
+                [.fresh(portfolio)],
+                [.fresh(portfolio)]
+            ],
+            marketScripts: [
+                .init(result: .failure(.remoteFailure)),
+                .init(result: .success(markets))
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+        #expect(home.tokenErrorMessage == "Market data is unavailable.")
+
+        await home.retryTokens()
+
+        #expect(repository.requestedPortfolioAddresses == [
+            wallet.address, wallet.address
+        ])
+        #expect(repository.requestedPortfolioPolicies == [
+            .ifExpired, .ifExpired
+        ])
+        #expect(repository.requestedMarketAddresses == [
+            wallet.address, wallet.address
+        ])
+        #expect(home.tokens.first?.marketPrice == 2_000)
+        #expect(home.tokenErrorMessage == nil)
+    }
+
+    @Test
+    func obsoleteMarketResultCannotOverwriteReplacementWallet() async throws {
+        let original = try makeSavedWallet(name: "Main", color: .blue)
+        let replacement = SavedWallet(
+            name: "Second",
+            address: try EVMAddress(
+                "0x81A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F93"
+            ),
+            cardColor: .teal
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [
+                [.fresh(makeRepositoryPortfolio(
+                    address: original.address,
+                    price: "100"
+                ))],
+                [.fresh(makeRepositoryPortfolio(
+                    address: replacement.address,
+                    price: "200"
+                ))]
+            ],
+            marketScripts: [
+                .gated(result: .success(makeTokenMarketPortfolio(
+                    address: original.address,
+                    tokens: [makeTokenMarket(coinGeckoPrice: 1_000)]
+                ))),
+                .init(result: .success(makeTokenMarketPortfolio(
+                    address: replacement.address,
+                    tokens: [makeTokenMarket(coinGeckoPrice: 2_000)]
+                )))
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        let oldLoad = Task { await home.load(wallet: original) }
+        await repository.waitUntilMarketGated()
+
+        await home.load(wallet: replacement)
+        #expect(home.walletCard?.id == replacement.id)
+        #expect(home.tokens.first?.marketPrice == 2_000)
+
+        repository.releaseMarketGate()
+        await oldLoad.value
+
+        #expect(home.walletCard?.id == replacement.id)
+        #expect(home.tokens.first?.marketPrice == 2_000)
+        #expect(home.tokenErrorMessage == nil)
+    }
+
+    @Test
+    func emptyPortfolioDoesNotRequestMarkets() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .blue)
+        let empty = TokenPortfolio(
+            address: wallet.address,
+            fetchedAt: nil,
+            network: "ethereum",
+            tokens: []
+        )
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioScripts: [[.fresh(empty)]],
+            marketScripts: [.init(result: .failure(.remoteFailure))]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+
+        #expect(repository.requestedMarketAddresses.isEmpty)
+        #expect(home.tokens.isEmpty)
+        #expect(home.tokenErrorMessage == nil)
+        #expect(!home.isLoadingTokens)
+    }
+
+    @Test
+    func failedPortfolioDoesNotRequestMarkets() async throws {
+        let wallet = try makeSavedWallet(name: "Main", color: .blue)
+        let repository = PortfolioTokenRepositorySpy(
+            portfolioRequestScripts: [
+                .init(events: [.refreshing], error: .remoteFailure)
+            ]
+        )
+        let home = WalletHomeViewModel(tokenRepository: repository)
+
+        await home.load(wallet: wallet)
+
+        #expect(repository.requestedMarketAddresses.isEmpty)
+        #expect(home.tokenErrorMessage == "Unable to load tokens.")
+    }
+
+    @Test
     func noWalletLoadsNativeTokens() async {
         let repository = PortfolioTokenRepositorySpy(
             nativeScripts: [[.fresh([makeRepositoryToken(price: "1900")])]]
@@ -199,6 +607,7 @@ struct WalletHomeViewModelTests {
 
         #expect(repository.requestedNativePolicies == [.ifExpired])
         #expect(repository.requestedPortfolioAddresses.isEmpty)
+        #expect(repository.requestedMarketAddresses.isEmpty)
         #expect(home.tokens.first?.formattedPrice == "$1,900.00")
     }
 
@@ -784,6 +1193,13 @@ struct WalletHomeViewModelTests {
         }
     }
 
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<100 {
+            guard !condition() else { return }
+            await Task.yield()
+        }
+    }
+
     private func makeSavedWallet(
         name: String,
         color: WalletCardColor
@@ -794,6 +1210,33 @@ struct WalletHomeViewModelTests {
                 "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
             ),
             cardColor: color
+        )
+    }
+
+    private func makeHomeToken(
+        symbol: String,
+        name: String,
+        tokenAddress: String? = nil,
+        balance: Decimal,
+        price: Decimal?,
+        change: Decimal?,
+        logoURL: URL? = nil
+    ) -> WalletToken {
+        WalletToken(
+            tokenAddress: tokenAddress,
+            symbol: symbol,
+            name: name,
+            decimals: 18,
+            rawBalance: "0",
+            balance: balance,
+            isNative: tokenAddress == nil,
+            price: nil,
+            logoURL: logoURL,
+            change24hPercent: change,
+            coinKey: symbol.lowercased(),
+            marketCapUSD: nil,
+            marketDataUpdatedAt: nil,
+            priceUSD: price
         )
     }
 }

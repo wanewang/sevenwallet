@@ -28,6 +28,8 @@ protocol TokenRepositoryProtocol: Sendable {
         address: EVMAddress,
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error>
+
+    func tokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio
 }
 
 protocol PortfolioLoadControlling: Sendable {

@@ -197,6 +197,7 @@ final class WalletHomeViewModel {
     private func consume(policy: RefreshPolicy) async {
         requestGeneration += 1
         let generation = requestGeneration
+        let wallet = selectedWallet
         resourceState = .loading
         tokenErrorMessage = nil
         defer {
@@ -209,13 +210,14 @@ final class WalletHomeViewModel {
         }
 
         do {
+            var latestTokens: [WalletToken]?
             let stream: AsyncThrowingStream<
                 RepositoryLoadEvent<[WalletToken]>,
                 Swift.Error
             >
-            if let selectedWallet {
+            if let wallet {
                 stream = tokenRepository
-                    .portfolio(address: selectedWallet.address, policy: policy)
+                    .portfolio(address: wallet.address, policy: policy)
                     .mapValues(\.tokens)
             } else {
                 stream = tokenRepository.nativeTokens(policy: policy)
@@ -225,6 +227,7 @@ final class WalletHomeViewModel {
                 guard generation == requestGeneration else { return }
                 switch event {
                 case .cached(let value), .fresh(let value):
+                    latestTokens = value
                     updateTokens(value)
                     isLoadingTokens = false
                 case .refreshing:
@@ -234,10 +237,89 @@ final class WalletHomeViewModel {
             guard generation == requestGeneration, !Task.isCancelled else {
                 return
             }
+
+            if let wallet, let latestTokens, !latestTokens.isEmpty {
+                isLoadingTokens = true
+                do {
+                    let markets = try await tokenRepository.tokenMarkets(
+                        address: wallet.address
+                    )
+                    guard generation == requestGeneration,
+                          !Task.isCancelled else {
+                        return
+                    }
+                    updateTokens(enrich(latestTokens, with: markets.tokens))
+                } catch is CancellationError {
+                    return
+                } catch {
+                    // Every cause shows the same message, so record the real
+                    // one before it is discarded.
+                    AppLog.marketError(
+                        """
+                        Market enrichment failed, keeping portfolio values: \
+                        \(String(describing: error))
+                        """
+                    )
+                    guard generation == requestGeneration,
+                          !Task.isCancelled else {
+                        return
+                    }
+                    tokenErrorMessage = "Market data is unavailable."
+                    resourceState = .loaded
+                    return
+                }
+            }
             resourceState = .loaded
         } catch {
             guard generation == requestGeneration, !Task.isCancelled else { return }
             tokenErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func enrich(
+        _ tokens: [WalletToken],
+        with markets: [TokenMarket]
+    ) -> [WalletToken] {
+        let marketsByID = Dictionary(
+            markets.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return tokens.map { token in
+            guard let market = marketsByID[token.id] else { return token }
+            let coinGecko = market.coinGecko.map {
+                (priceUSD: $0.priceUSD, change24hPercent: $0.change24hPercent)
+            }
+            let coinMarketCap = market.coinMarketCap.map {
+                (priceUSD: $0.priceUSD, change24hPercent: $0.change24hPercent)
+            }
+
+            // The provider supplying the 24h change also supplies the price,
+            // so both fields describe the same snapshot. CoinGecko leads unless
+            // only CoinMarketCap has a change.
+            let coinGeckoLeads = coinGecko?.change24hPercent != nil
+                || coinMarketCap?.change24hPercent == nil
+            let leader = coinGeckoLeads ? coinGecko : coinMarketCap
+            let follower = coinGeckoLeads ? coinMarketCap : coinGecko
+
+            return WalletToken(
+                tokenAddress: token.tokenAddress,
+                symbol: token.symbol,
+                name: token.name,
+                decimals: token.decimals,
+                rawBalance: token.rawBalance,
+                balance: token.balance,
+                isNative: token.isNative,
+                price: token.price,
+                logoURL: token.logoURL,
+                change24hPercent: leader?.change24hPercent
+                    ?? token.change24hPercent,
+                coinKey: token.coinKey,
+                marketCapUSD: token.marketCapUSD,
+                marketDataUpdatedAt: token.marketDataUpdatedAt,
+                priceUSD: leader?.priceUSD
+                    ?? follower?.priceUSD
+                    ?? token.priceUSD
+            )
         }
     }
 
@@ -277,6 +359,15 @@ private struct StaticTokenRepository: TokenRepositoryProtocol {
         policy: RefreshPolicy
     ) -> AsyncThrowingStream<RepositoryLoadEvent<TokenPortfolio>, Swift.Error> {
         AsyncThrowingStream { $0.finish() }
+    }
+
+    func tokenMarkets(address: EVMAddress) async throws -> TokenMarketPortfolio {
+        TokenMarketPortfolio(
+            wallet: address,
+            network: "ethereum",
+            portfolioFetchedAt: Date(timeIntervalSince1970: 0),
+            tokens: []
+        )
     }
 }
 
