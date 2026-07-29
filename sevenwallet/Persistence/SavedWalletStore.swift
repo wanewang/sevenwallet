@@ -27,11 +27,23 @@ protocol SavedWalletStoreProtocol: Sendable {
         cardColor: WalletCardColor
     ) async throws -> SavedWalletSnapshot
     func delete(id: UUID) async throws -> SavedWalletSnapshot
+    func attachCredentialReference(
+        id: UUID,
+        reference: WalletCredentialReference
+    ) async throws -> SavedWalletSnapshot
+    func detachCredentialReference(
+        id: UUID
+    ) async throws -> SavedWalletSnapshot
+    func rollbackCredentialBackedAdd(
+        id: UUID
+    ) async throws -> SavedWalletSnapshot
 }
 
 enum SavedWalletStoreError: Error, Equatable {
     case walletNotFound
     case corruptRecord
+    case credentialReferenceAlreadyAttached
+    case credentialReferenceMissing
 }
 
 @ModelActor
@@ -140,6 +152,49 @@ actor SavedWalletStore: SavedWalletStoreProtocol {
         }
     }
 
+    func attachCredentialReference(
+        id: UUID,
+        reference: WalletCredentialReference
+    ) throws -> SavedWalletSnapshot {
+        let record = try walletRecord(id: id)
+        guard record.credentialReferenceID == nil else {
+            throw SavedWalletStoreError.credentialReferenceAlreadyAttached
+        }
+        do {
+            record.credentialReferenceID = reference.rawValue
+            let snapshot = try snapshot()
+            try modelContext.save()
+            return snapshot
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+
+    func detachCredentialReference(
+        id: UUID
+    ) throws -> SavedWalletSnapshot {
+        let record = try walletRecord(id: id)
+        do {
+            record.credentialReferenceID = nil
+            let snapshot = try snapshot()
+            try modelContext.save()
+            return snapshot
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+
+    func rollbackCredentialBackedAdd(
+        id: UUID
+    ) throws -> SavedWalletSnapshot {
+        guard try walletRecord(id: id).credentialReferenceID != nil else {
+            throw SavedWalletStoreError.credentialReferenceMissing
+        }
+        return try delete(id: id)
+    }
+
     private func snapshot() throws -> SavedWalletSnapshot {
         SavedWalletSnapshot(
             wallets: try wallets(),
@@ -166,9 +221,23 @@ actor SavedWalletStore: SavedWalletStoreProtocol {
                 name: record.name,
                 address: address,
                 cardColor: color,
-                createdAt: record.createdAt
+                createdAt: record.createdAt,
+                credentialReference: record.credentialReferenceID.map {
+                    WalletCredentialReference(rawValue: $0)
+                }
             )
         }
+    }
+
+    private func walletRecord(id: UUID) throws -> SavedWalletRecord {
+        var descriptor = FetchDescriptor<SavedWalletRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        guard let record = try modelContext.fetch(descriptor).first else {
+            throw SavedWalletStoreError.walletNotFound
+        }
+        return record
     }
 
     private func selectionRecord() throws -> WalletSelectionRecord? {

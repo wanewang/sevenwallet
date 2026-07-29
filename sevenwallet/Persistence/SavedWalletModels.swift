@@ -8,6 +8,7 @@ final class SavedWalletRecord {
     var address: String
     var cardColor: String
     var createdAt: Date
+    var credentialReferenceID: UUID?
 
     init(wallet: SavedWallet) {
         id = wallet.id
@@ -15,6 +16,7 @@ final class SavedWalletRecord {
         address = wallet.address.rawValue
         cardColor = wallet.cardColor.rawValue
         createdAt = wallet.createdAt
+        credentialReferenceID = wallet.credentialReference?.rawValue
     }
 }
 

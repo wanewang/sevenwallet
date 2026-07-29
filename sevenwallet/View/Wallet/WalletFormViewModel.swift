@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 nonisolated enum WalletFormMode: Hashable, Sendable {
@@ -12,13 +13,22 @@ final class WalletFormViewModel {
     var name: String
     var address: String
     var selectedColor: WalletCardColor
+    private(set) var importMethod: WalletImportMethod = .watchAddress
+    private(set) var secretInput = ""
     var didInteractWithName = false
     var didInteractWithAddress = false
+    private(set) var didInteractWithSecret = false
     private(set) var isSubmitting = false
     private(set) var submissionError: String?
 
-    init(mode: WalletFormMode) {
+    private let deriver: any WalletCredentialDeriving
+
+    init(
+        mode: WalletFormMode,
+        deriver: any WalletCredentialDeriving = TrustWalletCredentialDeriver()
+    ) {
         self.mode = mode
+        self.deriver = deriver
         switch mode {
         case .add:
             name = ""
@@ -36,15 +46,35 @@ final class WalletFormViewModel {
     }
 
     var primaryActionTitle: String {
-        if case .add = mode { "Add wallet" } else { "Save changes" }
+        switch mode {
+        case .add where importMethod != .watchAddress:
+            "Continue"
+        case .add:
+            "Add wallet"
+        case .edit:
+            "Save changes"
+        }
+    }
+
+    var showsImportMethodPicker: Bool {
+        if case .add = mode { true } else { false }
+    }
+
+    var showsSecretInput: Bool {
+        showsImportMethodPicker && importMethod != .watchAddress
     }
 
     var isAddressEditable: Bool {
-        if case .add = mode { true } else { false }
+        if case .add = mode { importMethod == .watchAddress } else { false }
     }
 
     var showsDelete: Bool {
         if case .edit = mode { true } else { false }
+    }
+
+    var ownershipTitle: String? {
+        guard case let .edit(wallet) = mode else { return nil }
+        return wallet.credentialReference == nil ? "Watch only" : "Imported"
     }
 
     var nameError: String? {
@@ -60,15 +90,67 @@ final class WalletFormViewModel {
         return "Enter a valid Ethereum address."
     }
 
+    var secretError: String? {
+        guard showsSecretInput,
+              didInteractWithSecret,
+              derivedAddress == nil else { return nil }
+        switch importMethod {
+        case .recoveryPhrase:
+            return WalletCredentialError.invalidRecoveryPhrase.errorDescription
+        case .privateKey:
+            return WalletCredentialError.invalidPrivateKey.errorDescription
+        case .watchAddress:
+            return nil
+        }
+    }
+
+    var derivedAddress: EVMAddress? {
+        try? preparedCredential().address
+    }
+
     var canSubmit: Bool {
         guard !isSubmitting,
               WalletInputValidator.validatedName(name) != nil else { return false }
-        return !isAddressEditable ||
-            WalletInputValidator.validatedAddress(address) != nil
+        switch mode {
+        case .edit:
+            return true
+        case .add where importMethod == .watchAddress:
+            return WalletInputValidator.validatedAddress(address) != nil
+        case .add:
+            return derivedAddress != nil
+        }
     }
 
     func setName(_ value: String) {
         name = WalletInputValidator.limitedName(value)
+    }
+
+    func setImportMethod(_ method: WalletImportMethod) {
+        guard showsImportMethodPicker, importMethod != method else { return }
+        clearSensitiveInput()
+        importMethod = method
+        didInteractWithAddress = false
+        submissionError = nil
+    }
+
+    func setSecretInput(_ value: String) {
+        guard value != secretInput else { return }
+        secretInput = value
+        didInteractWithSecret = true
+        submissionError = nil
+    }
+
+    func credentialImportTarget(
+        session: WalletSession
+    ) -> WalletCredentialImportTarget? {
+        guard let derivedAddress else { return nil }
+        return session.credentialImportTarget(for: derivedAddress)
+    }
+
+    func reportImportedDuplicate() {
+        submissionError = WalletCredentialError
+            .credentialAlreadyImported
+            .errorDescription
     }
 
     func submit(session: WalletSession) async -> Bool {
@@ -82,8 +164,11 @@ final class WalletFormViewModel {
         do {
             switch mode {
             case .add:
-                guard let validAddress =
-                    WalletInputValidator.validatedAddress(address) else { return false }
+                guard importMethod == .watchAddress,
+                      let validAddress =
+                        WalletInputValidator.validatedAddress(address) else {
+                    return false
+                }
                 try await session.add(
                     name: validName,
                     address: validAddress,
@@ -98,9 +183,64 @@ final class WalletFormViewModel {
             }
             return true
         } catch {
-            submissionError = "Unable to save wallet."
+            submissionError = userFacingMessage(
+                for: error,
+                fallback: "Unable to save wallet."
+            )
             return false
         }
+    }
+
+    func submitCredential(
+        session: WalletSession,
+        confirmedUpgradeWalletID: UUID? = nil
+    ) async -> Bool {
+        didInteractWithName = true
+        didInteractWithSecret = true
+        guard case .add = mode,
+              importMethod != .watchAddress,
+              let validName = WalletInputValidator.validatedName(name),
+              canSubmit else { return false }
+
+        let prepared: PreparedWalletCredential
+        do {
+            prepared = try preparedCredential()
+        } catch {
+            return false
+        }
+
+        isSubmitting = true
+        submissionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await session.importCredential(
+                name: validName,
+                prepared: prepared,
+                cardColor: selectedColor,
+                confirmedUpgradeWalletID: confirmedUpgradeWalletID
+            )
+            clearSensitiveInput()
+            return true
+        } catch {
+            submissionError = userFacingMessage(
+                for: error,
+                fallback: "Unable to import wallet."
+            )
+            return false
+        }
+    }
+
+    func cancel() {
+        clearSensitiveInput()
+    }
+
+    func sceneDidBecomeInactive() {
+        clearSensitiveInput()
+    }
+
+    func clearSensitiveInput() {
+        secretInput = ""
+        didInteractWithSecret = false
     }
 
     func delete(session: WalletSession) async -> Bool {
@@ -112,8 +252,35 @@ final class WalletFormViewModel {
             try await session.delete(id: wallet.id)
             return true
         } catch {
-            submissionError = "Unable to delete wallet."
+            submissionError = userFacingMessage(
+                for: error,
+                fallback: "Unable to delete wallet."
+            )
             return false
         }
+    }
+
+    private func preparedCredential() throws -> PreparedWalletCredential {
+        switch importMethod {
+        case .recoveryPhrase:
+            try deriver.prepare(.recoveryPhrase(secretInput))
+        case .privateKey:
+            try deriver.prepare(.privateKey(secretInput))
+        case .watchAddress:
+            throw WalletCredentialError.invalidPrivateKey
+        }
+    }
+
+    private func userFacingMessage(
+        for error: Error,
+        fallback: String
+    ) -> String {
+        if let error = error as? WalletCredentialError {
+            return error.errorDescription ?? fallback
+        }
+        if let error = error as? WalletSessionError {
+            return error.errorDescription ?? fallback
+        }
+        return fallback
     }
 }

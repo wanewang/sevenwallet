@@ -21,6 +21,14 @@ enum WalletSessionDependencyCall: Equatable, Sendable {
     case delete(UUID)
 }
 
+enum SavedWalletStoreOperation: Equatable, Hashable, Sendable {
+    case add
+    case delete
+    case attachCredentialReference
+    case detachCredentialReference
+    case rollbackCredentialBackedAdd
+}
+
 actor WalletSessionCallRecorder {
     private(set) var calls: [WalletSessionDependencyCall] = []
 
@@ -32,6 +40,10 @@ actor WalletSessionCallRecorder {
 actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
     private var snapshot: SavedWalletSnapshot
     private var error: (any Error & Sendable)?
+    private var operationErrors: [
+        SavedWalletStoreOperation: any Error & Sendable
+    ] = [:]
+    private(set) var operations: [SavedWalletStoreOperation] = []
     private let recorder: WalletSessionCallRecorder?
     private let isAddGated: Bool
     private let isUpdateGated: Bool
@@ -70,6 +82,7 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
     }
 
     func addAndSelect(_ wallet: SavedWallet) async throws -> SavedWalletSnapshot {
+        operations.append(.add)
         hasStartedAdd = true
         addWaiters.forEach { $0.resume() }
         addWaiters = []
@@ -78,7 +91,7 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
                 addContinuation = continuation
             }
         }
-        if let error { throw error }
+        if let error = operationErrors[.add] ?? error { throw error }
         snapshot = .init(
             wallets: snapshot.wallets + [wallet],
             selectedWalletID: wallet.id
@@ -126,7 +139,8 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
                     name: name,
                     address: $0.address,
                     cardColor: cardColor,
-                    createdAt: $0.createdAt
+                    createdAt: $0.createdAt,
+                    credentialReference: $0.credentialReference
                 )
             },
             selectedWalletID: snapshot.selectedWalletID
@@ -147,6 +161,7 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
     }
 
     func delete(id: UUID) async throws -> SavedWalletSnapshot {
+        operations.append(.delete)
         await recorder?.record(.delete(id))
         hasStartedDelete = true
         deleteWaiters.forEach { $0.resume() }
@@ -156,13 +171,91 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
                 deleteContinuation = continuation
             }
         }
-        if let error { throw error }
+        if let error = operationErrors[.delete] ?? error { throw error }
         let wallets = snapshot.wallets.filter { $0.id != id }
         snapshot = .init(
             wallets: wallets,
             selectedWalletID: wallets.first?.id
         )
         return snapshot
+    }
+
+    func attachCredentialReference(
+        id: UUID,
+        reference: WalletCredentialReference
+    ) throws -> SavedWalletSnapshot {
+        operations.append(.attachCredentialReference)
+        if let error = operationErrors[.attachCredentialReference] ?? error {
+            throw error
+        }
+        guard let wallet = snapshot.wallets.first(where: { $0.id == id }) else {
+            throw SavedWalletStoreError.walletNotFound
+        }
+        guard wallet.credentialReference == nil else {
+            throw SavedWalletStoreError.credentialReferenceAlreadyAttached
+        }
+        snapshot = replacing(
+            wallet,
+            credentialReference: reference
+        )
+        return snapshot
+    }
+
+    func detachCredentialReference(
+        id: UUID
+    ) throws -> SavedWalletSnapshot {
+        operations.append(.detachCredentialReference)
+        if let error = operationErrors[.detachCredentialReference] ?? error {
+            throw error
+        }
+        guard let wallet = snapshot.wallets.first(where: { $0.id == id }) else {
+            throw SavedWalletStoreError.walletNotFound
+        }
+        snapshot = replacing(wallet, credentialReference: nil)
+        return snapshot
+    }
+
+    func rollbackCredentialBackedAdd(
+        id: UUID
+    ) throws -> SavedWalletSnapshot {
+        operations.append(.rollbackCredentialBackedAdd)
+        if let error = operationErrors[.rollbackCredentialBackedAdd] ?? error {
+            throw error
+        }
+        guard let wallet = snapshot.wallets.first(where: { $0.id == id }) else {
+            throw SavedWalletStoreError.walletNotFound
+        }
+        guard wallet.credentialReference != nil else {
+            throw SavedWalletStoreError.credentialReferenceMissing
+        }
+        let wallets = snapshot.wallets.filter { $0.id != id }
+        snapshot = .init(
+            wallets: wallets,
+            selectedWalletID: snapshot.selectedWalletID == id
+                ? wallets.first?.id
+                : snapshot.selectedWalletID
+        )
+        return snapshot
+    }
+
+    private func replacing(
+        _ wallet: SavedWallet,
+        credentialReference: WalletCredentialReference?
+    ) -> SavedWalletSnapshot {
+        SavedWalletSnapshot(
+            wallets: snapshot.wallets.map {
+                guard $0.id == wallet.id else { return $0 }
+                return SavedWallet(
+                    id: wallet.id,
+                    name: wallet.name,
+                    address: wallet.address,
+                    cardColor: wallet.cardColor,
+                    createdAt: wallet.createdAt,
+                    credentialReference: credentialReference
+                )
+            },
+            selectedWalletID: snapshot.selectedWalletID
+        )
     }
 
     func waitUntilDeleteStarted() async {
@@ -179,6 +272,18 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
 
     func setError(_ error: (any Error & Sendable)?) {
         self.error = error
+    }
+
+    func setError(
+        _ error: (any Error & Sendable)?,
+        for operation: SavedWalletStoreOperation
+    ) {
+        operationErrors[operation] = error
+    }
+
+
+    func resetOperations() {
+        operations = []
     }
 }
 

@@ -15,6 +15,10 @@ struct WalletListRowViewModel: Identifiable, Equatable {
         Fmt.short(wallet.address.rawValue)
     }
 
+    var ownershipTitle: String {
+        wallet.credentialReference == nil ? "Watch only" : "Imported"
+    }
+
     var formattedTotalValue: String {
         if let totalValue {
             return Fmt.usd(totalValue)

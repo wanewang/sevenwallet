@@ -15,6 +15,13 @@ struct WalletCardView: View {
                     HStack(spacing: 8) {
                         Text(viewModel.name)
                             .font(.headline)
+                        Text(viewModel.ownershipTitle)
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(.white.opacity(0.16))
+                            .clipShape(Capsule())
+                            .accessibilityIdentifier("wallet-card-ownership-status")
                         Image(systemName: "pencil")
                             .font(.caption.weight(.semibold))
                         Spacer(minLength: 0)

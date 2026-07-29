@@ -113,6 +113,97 @@ struct SavedWalletStoreTests {
         try? FileManager.default.removeItem(at: url)
     }
 
+    @Test func existingRecordLoadsAsWatchOnly() async throws {
+        let container = try makeContainer()
+        let existing = try wallet(name: "Existing", suffix: "1111", date: 100)
+        let context = ModelContext(container)
+        context.insert(SavedWalletRecord(wallet: existing))
+        try context.save()
+
+        let snapshot = try await SavedWalletStore(
+            modelContainer: container
+        ).loadSnapshot()
+
+        #expect(snapshot.wallets.first?.credentialReference == nil)
+    }
+
+    @Test func importedWalletRoundTripsOnlyOpaqueReference() async throws {
+        let container = try makeContainer()
+        let reference = WalletCredentialReference(
+            rawValue: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+        )
+        let imported = SavedWallet(
+            name: "Imported",
+            address: try EVMAddress(
+                "0x0000000000000000000000000000000000001111"
+            ),
+            cardColor: .teal,
+            credentialReference: reference
+        )
+
+        _ = try await SavedWalletStore(
+            modelContainer: container
+        ).addAndSelect(imported)
+        let reloaded = try await SavedWalletStore(
+            modelContainer: container
+        ).loadSnapshot()
+
+        #expect(reloaded.wallets == [imported])
+        let record = try #require(
+            ModelContext(container).fetch(
+                FetchDescriptor<SavedWalletRecord>()
+            ).first
+        )
+        #expect(record.credentialReferenceID == reference.rawValue)
+    }
+
+    @Test func attachAndDetachReferencePreservePublicIdentity() async throws {
+        let store = try makeStore()
+        let original = try wallet(name: "Original", suffix: "1111", date: 100)
+        let reference = WalletCredentialReference()
+        _ = try await store.addAndSelect(original)
+
+        let attached = try await store.attachCredentialReference(
+            id: original.id,
+            reference: reference
+        )
+        let imported = try #require(attached.wallets.first)
+        #expect(imported.credentialReference == reference)
+        #expect(imported.id == original.id)
+        #expect(imported.name == original.name)
+        #expect(imported.address == original.address)
+        #expect(imported.cardColor == original.cardColor)
+        #expect(imported.createdAt == original.createdAt)
+
+        let detached = try await store.detachCredentialReference(id: original.id)
+        #expect(detached.wallets == [original])
+        #expect(detached.selectedWalletID == original.id)
+    }
+
+    @Test func rollbackRemovesOnlyNewCredentialBackedWallet() async throws {
+        let store = try makeStore()
+        let existing = try wallet(name: "Existing", suffix: "1111", date: 100)
+        let candidate = SavedWallet(
+            id: UUID(),
+            name: "Candidate",
+            address: try EVMAddress(
+                "0x0000000000000000000000000000000000002222"
+            ),
+            cardColor: .pink,
+            createdAt: Date(timeIntervalSince1970: 200),
+            credentialReference: WalletCredentialReference()
+        )
+        _ = try await store.addAndSelect(existing)
+        _ = try await store.addAndSelect(candidate)
+
+        let rolledBack = try await store.rollbackCredentialBackedAdd(
+            id: candidate.id
+        )
+
+        #expect(rolledBack.wallets == [existing])
+        #expect(rolledBack.selectedWalletID == existing.id)
+    }
+
     @Test func failedSnapshotDoesNotPersistAddOrSelection() async throws {
         let container = try makeContainer()
         let original = try wallet(name: "Original", suffix: "1111", date: 100)

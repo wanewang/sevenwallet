@@ -79,19 +79,11 @@ struct WalletListView: View {
 
     private var header: some View {
         HStack(spacing: 14) {
-            Button(action: onBack) {
-                Image(systemName: "chevron.left")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(theme.fg1)
-                    .frame(width: 44, height: 44)
-                    .background(theme.input)
-                    .clipShape(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Back")
-            .accessibilityIdentifier("wallet-list-back-button")
+            WalletBackButton(
+                theme: theme,
+                accessibilityIdentifier: "wallet-list-back-button",
+                action: onBack
+            )
 
             Text("Wallets")
                 .font(.title2.bold())
@@ -103,18 +95,12 @@ struct WalletListView: View {
             Button(action: onAddWallet) {
                 Image(systemName: "plus")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(Theme.accentHi)
-                    .frame(width: 44, height: 44)
-                    .background(Theme.accent.opacity(0.14))
-                    .clipShape(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
-                    }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(WalletActionButtonStyle(
+                foreground: Theme.accentHi,
+                background: Theme.accent.opacity(0.14),
+                border: Theme.accent.opacity(0.4)
+            ))
             .accessibilityLabel("Add wallet")
             .accessibilityIdentifier("wallet-list-add-button")
         }
@@ -209,6 +195,13 @@ struct WalletListView: View {
                         .foregroundStyle(theme.fg2)
                         .lineLimit(1)
 
+                    Text(row.ownershipTitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.accentHi)
+                        .accessibilityIdentifier(
+                            "wallet-list-ownership-\(row.id.uuidString)"
+                        )
+
                     Text("Ethereum")
                         .font(.caption)
                         .foregroundStyle(theme.fg2)
@@ -262,6 +255,7 @@ struct WalletListView: View {
             row.wallet.name,
             isActive ? "Active" : nil,
             row.shortenedAddress,
+            row.ownershipTitle,
             "Ethereum",
             row.formattedTotalValue,
             row.formattedAssetCount
