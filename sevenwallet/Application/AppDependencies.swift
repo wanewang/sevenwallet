@@ -18,7 +18,13 @@ enum AppDependencies {
     ) -> WalletAppState {
         let schema = Schema(WalletCacheSchema.models)
         let container: ModelContainer
+        // Fixtures back wallet credentials with plaintext memory, so they are
+        // compiled out of release builds entirely.
+        #if DEBUG
         let usesFixture = arguments.contains("UI_TEST_FIXTURE")
+        #else
+        let usesFixture = false
+        #endif
         let persistsFixtureWallets = usesFixture &&
             arguments.contains("UI_TEST_PERSIST_SAVED_WALLETS")
 
@@ -45,6 +51,7 @@ enum AppDependencies {
 
         let cacheStore = WalletStore(modelContainer: container)
 
+        #if DEBUG
         if usesFixture {
             return fixtureState(
                 arguments: arguments,
@@ -52,6 +59,7 @@ enum AppDependencies {
                 cachePurger: cacheStore
             )
         }
+        #endif
 
         let savedWalletStore = SavedWalletStore(modelContainer: container)
         let repository: any TokenRepositoryProtocol
@@ -96,6 +104,7 @@ enum AppDependencies {
         )
     }
 
+    #if DEBUG
     private static func fixtureState(
         arguments: [String],
         container: ModelContainer?,
@@ -104,6 +113,29 @@ enum AppDependencies {
         let copies = arguments.contains("UI_TEST_LONG_TOKEN_LIST") ? 4 : 1
         let tokens = (0..<copies).flatMap(fixtureTokens(copy:))
         let repository: any TokenRepositoryProtocol
+        let fixtureCredentialReference = WalletCredentialReference(
+            rawValue: UUID(
+                uuidString: "00000000-0000-0000-0000-00000000F001"
+            )!
+        )
+        let usesImportedWallet = arguments.contains("UI_TEST_IMPORTED_WALLET")
+        let usesCredentialVectorWallet = usesImportedWallet || arguments.contains(
+            "UI_TEST_WATCH_ONLY_UPGRADE"
+        )
+        let credentialVault = FixtureWalletCredentialVault(
+            protectionAvailable: !arguments.contains(
+                "UI_TEST_CREDENTIAL_PROTECTION_UNAVAILABLE"
+            ),
+            cancelsAuthentication: arguments.contains(
+                "UI_TEST_CREDENTIAL_AUTH_CANCELLED"
+            ),
+            items: usesImportedWallet ? [
+                fixtureCredentialReference: WalletCredentialPayload(
+                    kind: .privateKey,
+                    bytes: Data(repeating: 1, count: 32)
+                )
+            ] : [:]
+        )
 
         if arguments.contains("UI_TEST_TOKEN_ERROR") {
             repository = FailingTokenRepository(message: "Unable to load tokens.")
@@ -123,10 +155,15 @@ enum AppDependencies {
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
                 name: "Main Wallet",
                 address: try! EVMAddress(
-                    "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
+                    usesCredentialVectorWallet
+                        ? "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
+                        : "0x71A2B3C4D5E6F7890A1B2C3D4E5F67890ABC8F92"
                 ),
                 cardColor: .blue,
-                createdAt: Date(timeIntervalSince1970: 0)
+                createdAt: Date(timeIntervalSince1970: 0),
+                credentialReference: usesImportedWallet
+                    ? fixtureCredentialReference
+                    : nil
             )
             let savingsWallet = SavedWallet(
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
@@ -154,7 +191,8 @@ enum AppDependencies {
         }
         let session = WalletSession(
             store: savedWalletStore,
-            cachePurger: cachePurger
+            cachePurger: cachePurger,
+            credentialVault: credentialVault
         )
         return WalletAppState(
             session: session,
@@ -162,6 +200,7 @@ enum AppDependencies {
             tokenRepository: repository
         )
     }
+    #endif
 
     private static func preparePersistentFixtureStore(
         container: ModelContainer,
@@ -450,7 +489,8 @@ private actor FixtureSavedWalletStore: SavedWalletStoreProtocol {
                     name: name,
                     address: wallet.address,
                     cardColor: cardColor,
-                    createdAt: wallet.createdAt
+                    createdAt: wallet.createdAt,
+                    credentialReference: wallet.credentialReference
                 )
             },
             selectedWalletID: snapshot.selectedWalletID
@@ -472,7 +512,126 @@ private actor FixtureSavedWalletStore: SavedWalletStoreProtocol {
         )
         return snapshot
     }
+
+    func attachCredentialReference(
+        id: UUID,
+        reference: WalletCredentialReference
+    ) throws -> SavedWalletSnapshot {
+        guard let wallet = snapshot.wallets.first(where: { $0.id == id }) else {
+            throw SavedWalletStoreError.walletNotFound
+        }
+        guard wallet.credentialReference == nil else {
+            throw SavedWalletStoreError.credentialReferenceAlreadyAttached
+        }
+        snapshot = replacing(wallet, credentialReference: reference)
+        return snapshot
+    }
+
+    func detachCredentialReference(
+        id: UUID
+    ) throws -> SavedWalletSnapshot {
+        guard let wallet = snapshot.wallets.first(where: { $0.id == id }) else {
+            throw SavedWalletStoreError.walletNotFound
+        }
+        snapshot = replacing(wallet, credentialReference: nil)
+        return snapshot
+    }
+
+    func rollbackCredentialBackedAdd(
+        id: UUID,
+        restoringSelection selection: UUID?
+    ) throws -> SavedWalletSnapshot {
+        guard let wallet = snapshot.wallets.first(where: { $0.id == id }) else {
+            throw SavedWalletStoreError.walletNotFound
+        }
+        guard wallet.credentialReference != nil else {
+            throw SavedWalletStoreError.credentialReferenceMissing
+        }
+        return try delete(id: id)
+    }
+
+    private func replacing(
+        _ wallet: SavedWallet,
+        credentialReference: WalletCredentialReference?
+    ) -> SavedWalletSnapshot {
+        SavedWalletSnapshot(
+            wallets: snapshot.wallets.map {
+                guard $0.id == wallet.id else { return $0 }
+                return SavedWallet(
+                    id: wallet.id,
+                    name: wallet.name,
+                    address: wallet.address,
+                    cardColor: wallet.cardColor,
+                    createdAt: wallet.createdAt,
+                    credentialReference: credentialReference
+                )
+            },
+            selectedWalletID: snapshot.selectedWalletID
+        )
+    }
 }
+
+#if DEBUG
+private actor FixtureWalletCredentialVault: WalletCredentialVault {
+    private let protectionAvailable: Bool
+    private let cancelsAuthentication: Bool
+    private var items: [WalletCredentialReference: WalletCredentialPayload]
+
+    init(
+        protectionAvailable: Bool,
+        cancelsAuthentication: Bool,
+        items: [WalletCredentialReference: WalletCredentialPayload]
+    ) {
+        self.protectionAvailable = protectionAvailable
+        self.cancelsAuthentication = cancelsAuthentication
+        self.items = items
+    }
+
+    func isProtectionAvailable() -> Bool {
+        protectionAvailable
+    }
+
+    func presence(
+        of reference: WalletCredentialReference
+    ) -> WalletCredentialPresence {
+        items[reference] == nil ? .missing : .present
+    }
+
+    func store(
+        _ payload: WalletCredentialPayload,
+        for reference: WalletCredentialReference
+    ) throws {
+        guard protectionAvailable else {
+            throw WalletCredentialError.protectionUnavailable
+        }
+        guard !cancelsAuthentication else {
+            throw WalletCredentialError.authenticationCancelled
+        }
+        items[reference] = payload
+    }
+
+    func read(
+        for reference: WalletCredentialReference
+    ) throws -> WalletCredentialPayload {
+        guard let payload = items[reference] else {
+            throw WalletCredentialError.credentialNotFound
+        }
+        return payload
+    }
+
+    func delete(for reference: WalletCredentialReference) throws {
+        guard protectionAvailable else {
+            throw WalletCredentialError.protectionUnavailable
+        }
+        guard !cancelsAuthentication else {
+            throw WalletCredentialError.authenticationCancelled
+        }
+        guard items.removeValue(forKey: reference) != nil else {
+            throw WalletCredentialError.credentialNotFound
+        }
+    }
+}
+#endif
 
 private actor FailingSavedWalletStore: SavedWalletStoreProtocol {
     let error: AppDependencyFailure
@@ -490,6 +649,17 @@ private actor FailingSavedWalletStore: SavedWalletStoreProtocol {
         cardColor: WalletCardColor
     ) throws -> SavedWalletSnapshot { throw error }
     func delete(id: UUID) throws -> SavedWalletSnapshot { throw error }
+    func attachCredentialReference(
+        id: UUID,
+        reference: WalletCredentialReference
+    ) throws -> SavedWalletSnapshot { throw error }
+    func detachCredentialReference(
+        id: UUID
+    ) throws -> SavedWalletSnapshot { throw error }
+    func rollbackCredentialBackedAdd(
+        id: UUID,
+        restoringSelection selection: UUID?
+    ) throws -> SavedWalletSnapshot { throw error }
 }
 
 private actor FailingAddressCachePurger: AddressCachePurging {

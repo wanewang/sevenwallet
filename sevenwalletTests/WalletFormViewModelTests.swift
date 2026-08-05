@@ -19,6 +19,199 @@ struct WalletFormViewModelTests {
         #expect(form.primaryActionTitle == "Add wallet")
     }
 
+    @Test func addDefaultsToWatchAddressAndOffersThreeMethods() {
+        let form = WalletFormViewModel(mode: .add)
+
+        #expect(form.importMethod == .watchAddress)
+        #expect(WalletImportMethod.allCases == [
+            .watchAddress,
+            .recoveryPhrase,
+            .privateKey
+        ])
+    }
+
+    @Test func recoveryPhraseValidatesAndPreviewsDerivedAddress() throws {
+        let form = WalletFormViewModel(mode: .add)
+        form.setName("Imported")
+        form.setImportMethod(.recoveryPhrase)
+        form.setSecretInput(
+            Array(repeating: "abandon", count: 11).joined(separator: " ")
+                + " about"
+        )
+
+        #expect(form.secretError == nil)
+        #expect(
+            form.derivedAddress == (try EVMAddress(
+                "0x9858effd232b4033e47d90003d41ec34ecaeda94"
+            ))
+        )
+        #expect(form.canSubmit)
+
+        form.setSecretInput(Array(repeating: "abandon", count: 12).joined(separator: " "))
+        #expect(form.secretError == WalletCredentialError.invalidRecoveryPhrase.errorDescription)
+        #expect(form.derivedAddress == nil)
+        #expect(!form.canSubmit)
+    }
+
+    @Test func unchangedSecretInputDoesNotRevealValidation() {
+        let form = WalletFormViewModel(mode: .add)
+        form.setImportMethod(.recoveryPhrase)
+
+        form.setSecretInput("")
+        #expect(form.secretError == nil)
+
+        form.setSecretInput("invalid")
+        #expect(
+            form.secretError
+                == WalletCredentialError.invalidRecoveryPhrase.errorDescription
+        )
+    }
+
+    @Test func privateKeyValidatesAndPreviewsDerivedAddress() throws {
+        let form = WalletFormViewModel(mode: .add)
+        form.setName("Imported")
+        form.setImportMethod(.privateKey)
+        form.setSecretInput("0x" + String(repeating: "0", count: 63) + "1")
+
+        #expect(
+            form.derivedAddress == (try EVMAddress(
+                "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
+            ))
+        )
+        #expect(form.canSubmit)
+
+        form.setSecretInput("not-a-key")
+        #expect(form.secretError == WalletCredentialError.invalidPrivateKey.errorDescription)
+        #expect(!form.canSubmit)
+    }
+
+    @Test func classifiesWatchOnlyUpgradeAndImportedDuplicate() async throws {
+        let address = try EVMAddress(
+            "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
+        )
+        let watchOnly = SavedWallet(
+            name: "Watch",
+            address: address,
+            cardColor: .blue
+        )
+        let watchSession = WalletSession(
+            store: ScriptedSavedWalletStore(
+                snapshot: .init(
+                    wallets: [watchOnly],
+                    selectedWalletID: watchOnly.id
+                )
+            ),
+            cachePurger: RecordingAddressCachePurger(),
+            credentialVault: InMemoryWalletCredentialVault()
+        )
+        await watchSession.load()
+        let form = makePrivateKeyForm()
+
+        #expect(
+            form.credentialImportTarget(session: watchSession)
+                == .watchOnlyUpgrade(watchOnly)
+        )
+
+        let reference = WalletCredentialReference()
+        let imported = SavedWallet(
+            id: watchOnly.id,
+            name: watchOnly.name,
+            address: address,
+            cardColor: watchOnly.cardColor,
+            createdAt: watchOnly.createdAt,
+            credentialReference: reference
+        )
+        let importedSession = WalletSession(
+            store: ScriptedSavedWalletStore(
+                snapshot: .init(
+                    wallets: [imported],
+                    selectedWalletID: imported.id
+                )
+            ),
+            cachePurger: RecordingAddressCachePurger(),
+            credentialVault: InMemoryWalletCredentialVault(items: [
+                reference: WalletCredentialPayload(
+                    kind: .privateKey,
+                    bytes: Data(repeating: 1, count: 32)
+                )
+            ])
+        )
+        await importedSession.load()
+
+        #expect(
+            form.credentialImportTarget(session: importedSession)
+                == .importedDuplicate(imported)
+        )
+    }
+
+    @Test func credentialFailureShowsNonSecretErrorAndKeepsFormUsable() async {
+        let vault = InMemoryWalletCredentialVault()
+        await vault.setError(
+            WalletCredentialError.storageFailure,
+            for: WalletCredentialVaultOperation.store
+        )
+        let session = WalletSession(
+            store: ScriptedSavedWalletStore(),
+            cachePurger: RecordingAddressCachePurger(),
+            credentialVault: vault
+        )
+        let form = makePrivateKeyForm()
+        let secret = form.secretInput
+
+        #expect(await form.submitCredential(session: session) == false)
+        #expect(form.secretInput == secret)
+        #expect(form.submissionError == WalletCredentialError.storageFailure.errorDescription)
+        #expect(!(form.submissionError ?? "").contains(secret))
+        #expect(!form.isSubmitting)
+    }
+
+    @Test func derivationFailureAfterConfirmationReportsAnError() async {
+        // `canSubmit` derives once before the guard, so failing from the second
+        // call reproduces a derivation that stops succeeding mid-submission.
+        let form = WalletFormViewModel(
+            mode: .add,
+            deriver: FlakyCredentialDeriver(succeedingCalls: 1)
+        )
+        form.setName("Imported")
+        form.setImportMethod(.privateKey)
+        form.setSecretInput(String(repeating: "0", count: 63) + "1")
+        let session = WalletSession(
+            store: ScriptedSavedWalletStore(),
+            cachePurger: RecordingAddressCachePurger(),
+            credentialVault: InMemoryWalletCredentialVault()
+        )
+
+        #expect(await form.submitCredential(session: session) == false)
+        #expect(
+            form.submissionError
+                == WalletCredentialError.invalidPrivateKey.errorDescription
+        )
+        #expect(!form.isSubmitting)
+    }
+
+    @Test func clearsSecretOnMethodChangeCancelSuccessAndInactiveScene() async {
+        let form = makePrivateKeyForm()
+        form.setImportMethod(.recoveryPhrase)
+        #expect(form.secretInput.isEmpty)
+
+        form.setSecretInput("temporary")
+        form.cancel()
+        #expect(form.secretInput.isEmpty)
+
+        let successfulForm = makePrivateKeyForm()
+        let session = WalletSession(
+            store: ScriptedSavedWalletStore(),
+            cachePurger: RecordingAddressCachePurger(),
+            credentialVault: InMemoryWalletCredentialVault()
+        )
+        #expect(await successfulForm.submitCredential(session: session))
+        #expect(successfulForm.secretInput.isEmpty)
+
+        let inactiveForm = makePrivateKeyForm()
+        inactiveForm.sceneDidBecomeInactive()
+        #expect(inactiveForm.secretInput.isEmpty)
+    }
+
     @Test func nameInputCapsAtTwentyCharacters() {
         let form = WalletFormViewModel(mode: .add)
 
@@ -182,6 +375,14 @@ struct WalletFormViewModelTests {
         )
     }
 
+    private func makePrivateKeyForm() -> WalletFormViewModel {
+        let form = WalletFormViewModel(mode: .add)
+        form.setName("Imported")
+        form.setImportMethod(.privateKey)
+        form.setSecretInput("0x" + String(repeating: "0", count: 63) + "1")
+        return form
+    }
+
     private actor GatedSavedWalletStore: SavedWalletStoreProtocol {
         private var addStarted = false
         private var addStartedContinuation: CheckedContinuation<Void, Never>?
@@ -219,6 +420,26 @@ struct WalletFormViewModelTests {
             .init(wallets: [], selectedWalletID: nil)
         }
 
+        func attachCredentialReference(
+            id: UUID,
+            reference: WalletCredentialReference
+        ) async throws -> SavedWalletSnapshot {
+            .init(wallets: [], selectedWalletID: nil)
+        }
+
+        func detachCredentialReference(
+            id: UUID
+        ) async throws -> SavedWalletSnapshot {
+            .init(wallets: [], selectedWalletID: nil)
+        }
+
+        func rollbackCredentialBackedAdd(
+            id: UUID,
+            restoringSelection selection: UUID?
+        ) async throws -> SavedWalletSnapshot {
+            .init(wallets: [], selectedWalletID: nil)
+        }
+
         func waitUntilAddStarted() async {
             guard !addStarted else { return }
             await withCheckedContinuation { continuation in
@@ -230,5 +451,23 @@ struct WalletFormViewModelTests {
             releaseAddContinuation?.resume()
             releaseAddContinuation = nil
         }
+    }
+}
+
+private final class FlakyCredentialDeriver: WalletCredentialDeriving, @unchecked Sendable {
+    private let real = TrustWalletCredentialDeriver()
+    private let succeedingCalls: Int
+    private var calls = 0
+
+    init(succeedingCalls: Int) {
+        self.succeedingCalls = succeedingCalls
+    }
+
+    func prepare(_ input: WalletSecretInput) throws -> PreparedWalletCredential {
+        calls += 1
+        guard calls <= succeedingCalls else {
+            throw WalletCredentialError.invalidPrivateKey
+        }
+        return try real.prepare(input)
     }
 }

@@ -77,6 +77,23 @@ struct WalletRootView: View {
                 session.clearSelectionError()
             }
         }
+        .alert(
+            "Wallet is now watch only",
+            isPresented: Binding(
+                get: { session.credentialRecoveryNotice != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        session.clearCredentialRecoveryNotice()
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                session.clearCredentialRecoveryNotice()
+            }
+        } message: {
+            Text(session.credentialRecoveryNotice?.message ?? "")
+        }
         .task { await loadWallets() }
     }
 

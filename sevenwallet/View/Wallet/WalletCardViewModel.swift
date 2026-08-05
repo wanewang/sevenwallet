@@ -8,6 +8,7 @@ final class WalletCardViewModel {
     let name: String
     let address: String
     let cardColor: WalletCardColor
+    let ownershipTitle: String
     let tokens: [TokenViewModel]
 
     init(wallet: SavedWallet, tokens: [TokenViewModel]) {
@@ -15,6 +16,9 @@ final class WalletCardViewModel {
         name = wallet.name
         address = wallet.address.rawValue
         cardColor = wallet.cardColor
+        ownershipTitle = wallet.credentialReference == nil
+            ? "Watch only"
+            : "Imported"
         self.tokens = tokens
     }
 

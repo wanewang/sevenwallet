@@ -16,19 +16,22 @@ nonisolated struct SavedWallet: Identifiable, Codable, Hashable, Sendable {
     let address: EVMAddress
     let cardColor: WalletCardColor
     let createdAt: Date
+    let credentialReference: WalletCredentialReference?
 
     init(
         id: UUID = UUID(),
         name: String,
         address: EVMAddress,
         cardColor: WalletCardColor,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        credentialReference: WalletCredentialReference? = nil
     ) {
         self.id = id
         self.name = name
         self.address = address
         self.cardColor = cardColor
         self.createdAt = createdAt
+        self.credentialReference = credentialReference
     }
 }
 
