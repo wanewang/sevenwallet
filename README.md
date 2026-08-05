@@ -80,7 +80,7 @@ The project uses Swift Package Manager. Xcode resolves the pinned Wallet Core de
 
 4. Open `sevenwallet.xcodeproj`, select the shared `sevenwallet` scheme and an iPhone destination, then run the app.
 
-The project still builds without `Config.local.xcconfig`; live data displays a `BASE_URL is not configured` error until a backend is supplied.
+The project still builds without `Config.local.xcconfig`; live data displays a `BASE_URL is not configured.` error until a backend is supplied.
 
 ## Backend contract
 
