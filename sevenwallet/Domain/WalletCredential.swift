@@ -16,9 +16,18 @@ nonisolated struct WalletCredentialReference: RawRepresentable, Codable, Hashabl
     }
 }
 
-nonisolated enum WalletSecretInput: Sendable {
+nonisolated enum WalletSecretInput: Sendable,
+    CustomStringConvertible,
+    CustomDebugStringConvertible,
+    CustomReflectable {
     case recoveryPhrase(String)
     case privateKey(String)
+
+    var description: String { "<redacted>" }
+    var debugDescription: String { description }
+    var customMirror: Mirror {
+        Mirror(self, children: [:], displayStyle: .enum)
+    }
 }
 
 nonisolated enum WalletCredentialKind: UInt8, Equatable, Sendable {
@@ -30,13 +39,22 @@ nonisolated protocol WalletCredentialDeriving: Sendable {
     func prepare(_ input: WalletSecretInput) throws -> PreparedWalletCredential
 }
 
-nonisolated struct WalletCredentialPayload: Sendable {
+nonisolated struct WalletCredentialPayload: Sendable,
+    CustomStringConvertible,
+    CustomDebugStringConvertible,
+    CustomReflectable {
     let kind: WalletCredentialKind
     let bytes: Data
 
     init(kind: WalletCredentialKind, bytes: Data) {
         self.kind = kind
         self.bytes = bytes
+    }
+
+    var description: String { "<redacted>" }
+    var debugDescription: String { description }
+    var customMirror: Mirror {
+        Mirror(self, children: [:], displayStyle: .struct)
     }
 }
 

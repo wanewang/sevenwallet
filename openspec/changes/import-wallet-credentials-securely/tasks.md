@@ -62,3 +62,5 @@
 - [x] 8.8 Give Keychain read and delete failures their own errors instead of reusing the storage-failure message.
 - [x] 8.9 Cover Keychain query construction and the vault store success path, asserting the encoded envelope, the account, and the access-control attributes.
 - [x] 8.10 Run the unit and UI suites, a release build, and OpenSpec validation.
+- [x] 8.11 Add regression tests proving secret input and credential payload values do not expose secret material through descriptions, debug output, dumps, or reflection.
+- [x] 8.12 Add type-level diagnostic redaction for secret-bearing credential values, then run the focused tests, unit suite, build, OpenSpec validation, and `git diff --check`.

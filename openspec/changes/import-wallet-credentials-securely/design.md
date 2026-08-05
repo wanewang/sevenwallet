@@ -38,6 +38,8 @@ Using an optional reference instead of a separate parallel wallet type keeps sel
 
 The form uses this interface for validation/address preview and recomputes a short-lived prepared value on submission rather than retaining credential bytes in observable state. A credential field becomes interacted only when its submitted text value actually changes, matching the watch-address field; initial focus alone does not reveal validation. An invalid submission still reveals the relevant validation message. A deterministic adapter exercises callers in tests; integration tests at the derivation interface use published BIP-39 and private-key vectors. Implementing BIP-39/BIP-32/secp256k1/Keccak locally was rejected as unnecessary cryptographic risk.
 
+`WalletSecretInput` and `WalletCredentialPayload` expose only `<redacted>` through their string, debug-string, and mirror representations. This prevents generic diagnostic and reflection APIs from traversing the stored phrase, private-key text, or credential bytes.
+
 ### Protected storage is a deep module over Security and LocalAuthentication
 
 `WalletCredentialVault` exposes availability, non-interactive presence checking, authenticated store/read, and authenticated delete operations keyed by `WalletCredentialReference`. Its production adapter owns all `Security` and `LocalAuthentication` details; an in-memory adapter is used by application tests.

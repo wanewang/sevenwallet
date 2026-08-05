@@ -71,6 +71,10 @@ The system MUST persist only public wallet metadata and an opaque credential ref
 - **WHEN** validation, authentication, Keychain, or SwiftData reports an error
 - **THEN** user-visible and diagnostic error text contains no submitted secret or derived private data, and names the failed operation rather than reporting every Keychain failure as a storage failure
 
+#### Scenario: A secret-bearing value is inspected diagnostically
+- **WHEN** a secret input or credential payload is printed, debug-printed, described, dumped, or reflected
+- **THEN** its diagnostic representation is redacted and reflection exposes none of its stored secret children
+
 #### Scenario: Release builds are assembled
 - **WHEN** the app is compiled for release
 - **THEN** test fixtures that hold credential payloads in plaintext memory are excluded from the binary and cannot be selected by a launch argument
