@@ -197,11 +197,40 @@ struct SavedWalletStoreTests {
         _ = try await store.addAndSelect(candidate)
 
         let rolledBack = try await store.rollbackCredentialBackedAdd(
-            id: candidate.id
+            id: candidate.id,
+            restoringSelection: existing.id
         )
 
         #expect(rolledBack.wallets == [existing])
         #expect(rolledBack.selectedWalletID == existing.id)
+    }
+
+    @Test func rollbackRestoresTheSelectionTheAddReplaced() async throws {
+        let store = try makeStore()
+        let oldest = try wallet(name: "Oldest", suffix: "1111", date: 100)
+        let selected = try wallet(name: "Selected", suffix: "2222", date: 200)
+        let candidate = SavedWallet(
+            id: UUID(),
+            name: "Candidate",
+            address: try EVMAddress(
+                "0x0000000000000000000000000000000000003333"
+            ),
+            cardColor: .pink,
+            createdAt: Date(timeIntervalSince1970: 300),
+            credentialReference: WalletCredentialReference()
+        )
+        _ = try await store.addAndSelect(oldest)
+        _ = try await store.addAndSelect(selected)
+        _ = try await store.addAndSelect(candidate)
+
+        let rolledBack = try await store.rollbackCredentialBackedAdd(
+            id: candidate.id,
+            restoringSelection: selected.id
+        )
+
+        #expect(rolledBack.wallets == [oldest, selected])
+        #expect(rolledBack.selectedWalletID == selected.id)
+        #expect(try await store.loadSnapshot().selectedWalletID == selected.id)
     }
 
     @Test func failedSnapshotDoesNotPersistAddOrSelection() async throws {

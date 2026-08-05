@@ -35,7 +35,8 @@ protocol SavedWalletStoreProtocol: Sendable {
         id: UUID
     ) async throws -> SavedWalletSnapshot
     func rollbackCredentialBackedAdd(
-        id: UUID
+        id: UUID,
+        restoringSelection selection: UUID?
     ) async throws -> SavedWalletSnapshot
 }
 
@@ -187,12 +188,21 @@ actor SavedWalletStore: SavedWalletStoreProtocol {
     }
 
     func rollbackCredentialBackedAdd(
-        id: UUID
+        id: UUID,
+        restoringSelection selection: UUID?
     ) throws -> SavedWalletSnapshot {
         guard try walletRecord(id: id).credentialReferenceID != nil else {
             throw SavedWalletStoreError.credentialReferenceMissing
         }
-        return try delete(id: id)
+        // The add selected the new wallet, so deleting it falls back to the
+        // oldest remaining wallet unless the caller's selection is restored.
+        let snapshot = try delete(id: id)
+        guard let selection,
+              selection != snapshot.selectedWalletID,
+              snapshot.wallets.contains(where: { $0.id == selection }) else {
+            return snapshot
+        }
+        return try select(id: selection)
     }
 
     private func snapshot() throws -> SavedWalletSnapshot {

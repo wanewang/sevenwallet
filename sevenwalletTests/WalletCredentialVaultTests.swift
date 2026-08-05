@@ -170,6 +170,100 @@ struct WalletCredentialVaultTests {
         #expect(await keychain.calls == [.delete])
     }
 
+    @Test func storesEncodedEnvelopeUnderTheReferenceAccount() async throws {
+        let authenticator = StubDeviceOwnerAuthenticator()
+        let keychain = StubWalletCredentialKeychain()
+        let vault = KeychainWalletCredentialVault(
+            authenticator: authenticator,
+            keychain: keychain
+        )
+        let payload = makePayload(byte: 0xAB)
+
+        try await vault.store(payload, for: reference)
+
+        #expect(await authenticator.calls == [.availability, .authenticate])
+        #expect(await keychain.calls == [.add])
+        let write = try #require(await keychain.writes.first)
+        #expect(write.data == (try WalletCredentialEnvelope.encode(payload)))
+        #expect(write.data != payload.bytes)
+        #expect(write.account == reference.rawValue.uuidString.lowercased())
+    }
+
+    @Test func storeAndReadAgreeOnTheAccountForAReference() async throws {
+        let keychain = StubWalletCredentialKeychain()
+        let vault = KeychainWalletCredentialVault(
+            authenticator: StubDeviceOwnerAuthenticator(),
+            keychain: keychain
+        )
+        let payload = makePayload(byte: 0xCD)
+
+        try await vault.store(payload, for: reference)
+        let restored = try await vault.read(for: reference)
+
+        #expect(restored.kind == payload.kind)
+        #expect(restored.bytes == payload.bytes)
+        #expect(await keychain.readAccounts == (await keychain.writes.map(\.account)))
+    }
+
+    @Test func reportsReadAndDeleteFailuresDistinctlyFromStorageFailures() {
+        #expect(
+            KeychainWalletCredentialVault.readError(for: errSecDecode)
+                == .readFailure
+        )
+        #expect(
+            KeychainWalletCredentialVault.deleteError(for: errSecNotAvailable)
+                == .deleteFailure
+        )
+        #expect(
+            KeychainWalletCredentialVault.storageError(for: errSecDecode)
+                == .storageFailure
+        )
+        #expect(
+            WalletCredentialError.readFailure.errorDescription
+                != WalletCredentialError.storageFailure.errorDescription
+        )
+        #expect(
+            WalletCredentialError.deleteFailure.errorDescription
+                != WalletCredentialError.storageFailure.errorDescription
+        )
+    }
+
+    @Test func keychainItemsAreDeviceBoundAndPasscodeGated() throws {
+        let account = "account"
+        let base = SystemWalletCredentialKeychain.baseQuery(
+            service: "service",
+            account: account
+        )
+
+        #expect(base[kSecClass as String] as? String == (kSecClassGenericPassword as String))
+        #expect(base[kSecAttrService as String] as? String == "service")
+        #expect(base[kSecAttrAccount as String] as? String == account)
+        #expect(base[kSecAttrSynchronizable as String] as? Bool == false)
+
+        #expect(
+            SystemWalletCredentialKeychain.protection
+                == kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+        )
+        #expect(
+            SystemWalletCredentialKeychain.accessFlags.contains(.userPresence)
+        )
+
+        let add = try SystemWalletCredentialKeychain.addQuery(
+            service: "service",
+            account: account,
+            data: Data([0x01])
+        )
+        #expect(add[kSecAttrAccessControl as String] != nil)
+        // Access control replaces the accessible attribute; setting both makes
+        // `SecItemAdd` fail with `errSecParam`.
+        #expect(add[kSecAttrAccessible as String] == nil)
+        #expect(add[kSecValueData as String] as? Data == Data([0x01]))
+    }
+
+    @Test func presenceIsCheckedWithoutPromptingTheUser() {
+        #expect(SystemWalletCredentialKeychain.presenceContext().interactionNotAllowed)
+    }
+
     private func makePayload(byte: UInt8 = 0x11) -> WalletCredentialPayload {
         WalletCredentialPayload(
             kind: .privateKey,
@@ -220,7 +314,10 @@ private actor StubWalletCredentialKeychain: WalletCredentialKeychainAccessing {
     private let readData: Data?
     private let deleteStatus: OSStatus
     private let presenceStatus: OSStatus
+    private var storedItems: [String: Data] = [:]
     private(set) var calls: [StubKeychainCall] = []
+    private(set) var writes: [(account: String, data: Data)] = []
+    private(set) var readAccounts: [String] = []
 
     init(
         addStatus: OSStatus = errSecSuccess,
@@ -238,11 +335,18 @@ private actor StubWalletCredentialKeychain: WalletCredentialKeychainAccessing {
 
     func add(data: Data, account: String) -> OSStatus {
         calls.append(.add)
+        guard addStatus == errSecSuccess else { return addStatus }
+        writes.append((account: account, data: data))
+        storedItems[account] = data
         return addStatus
     }
 
     func read(account: String, prompt: String) -> (OSStatus, Data?) {
         calls.append(.read)
+        readAccounts.append(account)
+        if let stored = storedItems[account] {
+            return (errSecSuccess, stored)
+        }
         return (readStatus, readData)
     }
 

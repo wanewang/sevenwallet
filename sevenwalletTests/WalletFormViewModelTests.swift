@@ -165,6 +165,30 @@ struct WalletFormViewModelTests {
         #expect(!form.isSubmitting)
     }
 
+    @Test func derivationFailureAfterConfirmationReportsAnError() async {
+        // `canSubmit` derives once before the guard, so failing from the second
+        // call reproduces a derivation that stops succeeding mid-submission.
+        let form = WalletFormViewModel(
+            mode: .add,
+            deriver: FlakyCredentialDeriver(succeedingCalls: 1)
+        )
+        form.setName("Imported")
+        form.setImportMethod(.privateKey)
+        form.setSecretInput(String(repeating: "0", count: 63) + "1")
+        let session = WalletSession(
+            store: ScriptedSavedWalletStore(),
+            cachePurger: RecordingAddressCachePurger(),
+            credentialVault: InMemoryWalletCredentialVault()
+        )
+
+        #expect(await form.submitCredential(session: session) == false)
+        #expect(
+            form.submissionError
+                == WalletCredentialError.invalidPrivateKey.errorDescription
+        )
+        #expect(!form.isSubmitting)
+    }
+
     @Test func clearsSecretOnMethodChangeCancelSuccessAndInactiveScene() async {
         let form = makePrivateKeyForm()
         form.setImportMethod(.recoveryPhrase)
@@ -410,7 +434,8 @@ struct WalletFormViewModelTests {
         }
 
         func rollbackCredentialBackedAdd(
-            id: UUID
+            id: UUID,
+            restoringSelection selection: UUID?
         ) async throws -> SavedWalletSnapshot {
             .init(wallets: [], selectedWalletID: nil)
         }
@@ -426,5 +451,23 @@ struct WalletFormViewModelTests {
             releaseAddContinuation?.resume()
             releaseAddContinuation = nil
         }
+    }
+}
+
+private final class FlakyCredentialDeriver: WalletCredentialDeriving, @unchecked Sendable {
+    private let real = TrustWalletCredentialDeriver()
+    private let succeedingCalls: Int
+    private var calls = 0
+
+    init(succeedingCalls: Int) {
+        self.succeedingCalls = succeedingCalls
+    }
+
+    func prepare(_ input: WalletSecretInput) throws -> PreparedWalletCredential {
+        calls += 1
+        guard calls <= succeedingCalls else {
+            throw WalletCredentialError.invalidPrivateKey
+        }
+        return try real.prepare(input)
     }
 }

@@ -206,6 +206,10 @@ final class WalletFormViewModel {
         do {
             prepared = try preparedCredential()
         } catch {
+            submissionError = userFacingMessage(
+                for: error,
+                fallback: "Unable to import wallet."
+            )
             return false
         }
 

@@ -76,14 +76,22 @@ final class WalletSession {
         selectionErrorMessage = nil
         credentialRecoveryNotice = nil
         defer { isLoading = false }
+
+        let loaded: SavedWalletSnapshot
         do {
-            let loaded = try await store.loadSnapshot()
-            var reconciled = loaded
-            var recoveryNotice: WalletCredentialRecoveryNotice?
-            for wallet in loaded.wallets {
-                guard let reference = wallet.credentialReference else {
-                    continue
-                }
+            loaded = try await store.loadSnapshot()
+        } catch {
+            loadErrorMessage = "Unable to load saved wallets."
+            return
+        }
+
+        var reconciled = loaded
+        var recoveryNotice: WalletCredentialRecoveryNotice?
+        for wallet in loaded.wallets {
+            guard let reference = wallet.credentialReference else {
+                continue
+            }
+            do {
                 switch try await credentialVault.presence(of: reference) {
                 case .present:
                     continue
@@ -99,12 +107,19 @@ final class WalletSession {
                         )
                     }
                 }
+            } catch {
+                // Detaching already persisted earlier downgrades, so publish
+                // them before reporting the failure rather than leaving the
+                // published wallets disagreeing with the store.
+                apply(reconciled)
+                credentialRecoveryNotice = recoveryNotice
+                loadErrorMessage = (error as? WalletCredentialError)?
+                    .errorDescription ?? "Unable to load saved wallets."
+                return
             }
-            apply(reconciled)
-            credentialRecoveryNotice = recoveryNotice
-        } catch {
-            loadErrorMessage = "Unable to load saved wallets."
         }
+        apply(reconciled)
+        credentialRecoveryNotice = recoveryNotice
     }
 
     func clearCredentialRecoveryNotice() {
@@ -203,6 +218,7 @@ final class WalletSession {
             cardColor: cardColor,
             credentialReference: reference
         )
+        let previousSelection = walletSnapshot.selectedWalletID
         let pendingSnapshot = try await store.addAndSelect(wallet)
         do {
             try await credentialVault.store(
@@ -210,7 +226,10 @@ final class WalletSession {
                 for: reference
             )
         } catch {
-            _ = try? await store.rollbackCredentialBackedAdd(id: wallet.id)
+            _ = try? await store.rollbackCredentialBackedAdd(
+                id: wallet.id,
+                restoringSelection: previousSelection
+            )
             throw error
         }
 
@@ -225,7 +244,7 @@ final class WalletSession {
         prepared: PreparedWalletCredential
     ) async throws {
         let reference = WalletCredentialReference()
-        _ = try await store.attachCredentialReference(
+        let attachedSnapshot = try await store.attachCredentialReference(
             id: wallet.id,
             reference: reference
         )
@@ -239,7 +258,16 @@ final class WalletSession {
             throw error
         }
 
-        let completedSnapshot = try await store.select(id: wallet.id)
+        // The credential is stored and attached, so the import has succeeded.
+        // A failure to switch the active wallet must not report it as failed,
+        // or a retry would hit the already-imported guard forever.
+        let completedSnapshot: SavedWalletSnapshot
+        do {
+            completedSnapshot = try await store.select(id: wallet.id)
+        } catch {
+            completedSnapshot = attachedSnapshot
+            selectionErrorMessage = "Unable to switch wallet."
+        }
         await portfolioLoadController.resumePortfolioLoads(
             address: wallet.address
         )
@@ -374,7 +402,15 @@ final class WalletSession {
             }
             apply(snapshot)
         } catch {
+            // The secret was destroyed before this point, so the wallet
+            // survives the failed deletion as watch only. Say so, or the
+            // caller's "unable to delete" message hides the lost credential.
             apply(watchOnlySnapshot)
+            credentialRecoveryNotice = WalletCredentialRecoveryNotice(
+                walletID: wallet.id,
+                walletName: wallet.name,
+                address: wallet.address
+            )
             await portfolioLoadController.resumePortfolioLoads(
                 address: wallet.address
             )

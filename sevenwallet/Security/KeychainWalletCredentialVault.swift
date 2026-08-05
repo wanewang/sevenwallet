@@ -65,6 +65,12 @@ actor LocalDeviceOwnerAuthenticator: DeviceOwnerAuthenticating {
 }
 
 actor SystemWalletCredentialKeychain: WalletCredentialKeychainAccessing {
+    /// Credentials are device-bound and unlocked only by the device owner, so
+    /// they never reach an iCloud Keychain backup and are destroyed by iOS if
+    /// the user removes their passcode.
+    nonisolated static let protection = kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+    nonisolated static let accessFlags: SecAccessControlCreateFlags = .userPresence
+
     private let service: String
 
     init(service: String) {
@@ -72,27 +78,21 @@ actor SystemWalletCredentialKeychain: WalletCredentialKeychainAccessing {
     }
 
     func add(data: Data, account: String) throws -> OSStatus {
-        var accessControlError: Unmanaged<CFError>?
-        guard let accessControl = SecAccessControlCreateWithFlags(
-            kCFAllocatorDefault,
-            kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
-            .userPresence,
-            &accessControlError
-        ) else {
-            throw WalletCredentialError.protectionUnavailable
-        }
-
-        let query: [String: Any] = baseQuery(account: account).merging([
-            kSecValueData as String: data,
-            kSecAttrAccessControl as String: accessControl
-        ]) { _, new in new }
+        let query = try Self.addQuery(
+            service: service,
+            account: account,
+            data: data
+        )
         return SecItemAdd(query as CFDictionary, nil)
     }
 
     func read(account: String, prompt: String) -> (OSStatus, Data?) {
         let context = LAContext()
         context.localizedReason = prompt
-        let query: [String: Any] = baseQuery(account: account).merging([
+        let query: [String: Any] = Self.baseQuery(
+            service: service,
+            account: account
+        ).merging([
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationContext as String: context
@@ -103,27 +103,62 @@ actor SystemWalletCredentialKeychain: WalletCredentialKeychainAccessing {
     }
 
     func delete(account: String) -> OSStatus {
-        SecItemDelete(baseQuery(account: account) as CFDictionary)
+        let query = Self.baseQuery(service: service, account: account)
+        return SecItemDelete(query as CFDictionary)
     }
 
     func presence(account: String) -> OSStatus {
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        let query: [String: Any] = baseQuery(account: account).merging([
+        let query: [String: Any] = Self.baseQuery(
+            service: service,
+            account: account
+        ).merging([
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationContext as String: context
+            kSecUseAuthenticationContext as String: Self.presenceContext()
         ]) { _, new in new }
         return SecItemCopyMatching(query as CFDictionary, nil)
     }
 
-    private func baseQuery(account: String) -> [String: Any] {
+    nonisolated static func baseQuery(
+        service: String,
+        account: String
+    ) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecAttrSynchronizable as String: false
         ]
+    }
+
+    nonisolated static func addQuery(
+        service: String,
+        account: String,
+        data: Data
+    ) throws -> [String: Any] {
+        var accessControlError: Unmanaged<CFError>?
+        guard let accessControl = SecAccessControlCreateWithFlags(
+            kCFAllocatorDefault,
+            protection,
+            accessFlags,
+            &accessControlError
+        ) else {
+            throw WalletCredentialError.protectionUnavailable
+        }
+
+        return baseQuery(service: service, account: account).merging([
+            kSecValueData as String: data,
+            kSecAttrAccessControl as String: accessControl
+        ]) { _, new in new }
+    }
+
+    /// `presence` must never prompt, so the item is queried with interaction
+    /// disabled. `errSecInteractionNotAllowed` therefore proves the item
+    /// exists — see `KeychainWalletCredentialVault.presence(of:)`.
+    nonisolated static func presenceContext() -> LAContext {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return context
     }
 }
 
@@ -241,7 +276,7 @@ actor KeychainWalletCredentialVault: WalletCredentialVault {
         case errSecAuthFailed:
             .authenticationFailed
         default:
-            .storageFailure
+            .readFailure
         }
     }
 
@@ -256,7 +291,7 @@ actor KeychainWalletCredentialVault: WalletCredentialVault {
         case errSecAuthFailed:
             .authenticationFailed
         default:
-            .storageFailure
+            .deleteFailure
         }
     }
 }

@@ -60,7 +60,14 @@ struct WalletCredentialDeriverTests {
         "01",
         String(repeating: "g", count: 64),
         String(repeating: "0", count: 64),
-        "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
+        "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+        // Sign prefixes parse as hex digits through `UInt8(_:radix:)` and
+        // would otherwise import the unrelated key 0x0101...01.
+        String(repeating: "+1", count: 32),
+        String(repeating: "-1", count: 32),
+        // 64 UTF-8 bytes but only 63 Characters.
+        String(repeating: "a", count: 62) + "\u{00e9}",
+        "\u{00e9}" + String(repeating: "a", count: 62)
     ])
     func rejectsInvalidPrivateKeys(_ key: String) {
         #expect(throws: WalletCredentialError.invalidPrivateKey) {

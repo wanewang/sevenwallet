@@ -81,6 +81,8 @@ nonisolated enum WalletCredentialError: LocalizedError, Equatable, Sendable {
     case credentialNotFound
     case corruptCredential
     case storageFailure
+    case readFailure
+    case deleteFailure
     case statusUnavailable
 
     var errorDescription: String? {
@@ -103,6 +105,10 @@ nonisolated enum WalletCredentialError: LocalizedError, Equatable, Sendable {
             "The stored wallet credential cannot be read."
         case .storageFailure:
             "Unable to store wallet credentials securely."
+        case .readFailure:
+            "Unable to read the stored wallet credential."
+        case .deleteFailure:
+            "Unable to delete the stored wallet credential."
         case .statusUnavailable:
             "Unable to verify stored wallet credentials."
         }

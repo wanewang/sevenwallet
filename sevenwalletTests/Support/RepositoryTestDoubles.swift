@@ -23,6 +23,7 @@ enum WalletSessionDependencyCall: Equatable, Sendable {
 
 enum SavedWalletStoreOperation: Equatable, Hashable, Sendable {
     case add
+    case select
     case delete
     case attachCredentialReference
     case detachCredentialReference
@@ -100,7 +101,7 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
     }
 
     func select(id: UUID) throws -> SavedWalletSnapshot {
-        if let error { throw error }
+        if let error = operationErrors[.select] ?? error { throw error }
         snapshot = try snapshot.selecting(id: id)
         return snapshot
     }
@@ -216,7 +217,8 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
     }
 
     func rollbackCredentialBackedAdd(
-        id: UUID
+        id: UUID,
+        restoringSelection selection: UUID?
     ) throws -> SavedWalletSnapshot {
         operations.append(.rollbackCredentialBackedAdd)
         if let error = operationErrors[.rollbackCredentialBackedAdd] ?? error {
@@ -229,12 +231,13 @@ actor ScriptedSavedWalletStore: SavedWalletStoreProtocol {
             throw SavedWalletStoreError.credentialReferenceMissing
         }
         let wallets = snapshot.wallets.filter { $0.id != id }
-        snapshot = .init(
-            wallets: wallets,
-            selectedWalletID: snapshot.selectedWalletID == id
-                ? wallets.first?.id
-                : snapshot.selectedWalletID
-        )
+        let fallback = snapshot.selectedWalletID == id
+            ? wallets.first?.id
+            : snapshot.selectedWalletID
+        let restored = wallets.contains { $0.id == selection }
+            ? selection
+            : fallback
+        snapshot = .init(wallets: wallets, selectedWalletID: restored)
         return snapshot
     }
 

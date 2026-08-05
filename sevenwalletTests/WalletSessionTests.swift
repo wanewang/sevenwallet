@@ -124,10 +124,59 @@ struct WalletSessionTests {
 
         await session.load()
 
-        #expect(session.wallets.isEmpty)
-        #expect(session.loadErrorMessage == "Unable to load saved wallets.")
+        #expect(session.wallets == [wallet])
+        #expect(
+            session.loadErrorMessage
+                == WalletCredentialError.statusUnavailable.errorDescription
+        )
         #expect(session.credentialRecoveryNotice == nil)
         #expect(try await store.loadSnapshot().wallets == [wallet])
+    }
+
+    @Test func indeterminateStatusPublishesDowngradesAlreadyPersisted() async throws {
+        let missingReference = WalletCredentialReference()
+        let unverifiableReference = WalletCredentialReference()
+        let missing = try makeWallet(
+            name: "Missing",
+            credentialReference: missingReference
+        )
+        let unverifiable = SavedWallet(
+            name: "Unverifiable",
+            address: try EVMAddress(
+                "0x0000000000000000000000000000000000000002"
+            ),
+            cardColor: .amber,
+            credentialReference: unverifiableReference
+        )
+        let vault = InMemoryWalletCredentialVault()
+        await vault.setError(
+            WalletCredentialError.statusUnavailable,
+            for: .presence(unverifiableReference)
+        )
+        let store = ScriptedSavedWalletStore(
+            snapshot: .init(
+                wallets: [missing, unverifiable],
+                selectedWalletID: missing.id
+            )
+        )
+        let session = WalletSession(
+            store: store,
+            cachePurger: RecordingAddressCachePurger(),
+            credentialVault: vault
+        )
+
+        await session.load()
+
+        #expect(session.wallets.count == 2)
+        #expect(session.wallets.first?.credentialReference == nil)
+        #expect(session.wallets.last?.credentialReference == unverifiableReference)
+        #expect(session.credentialRecoveryNotice?.walletID == missing.id)
+        #expect(
+            session.loadErrorMessage
+                == WalletCredentialError.statusUnavailable.errorDescription
+        )
+        let persisted = try await store.loadSnapshot()
+        #expect(persisted.wallets == session.wallets)
     }
 
     @Test func addAndUpdatePublishSuccessfulSnapshots() async throws {
@@ -278,6 +327,79 @@ struct WalletSessionTests {
         ])
         #expect(try await store.loadSnapshot().wallets.isEmpty)
         #expect(session.wallets.isEmpty)
+    }
+
+    @Test func rollbackRestoresTheSelectionTheFailedImportReplaced() async throws {
+        let oldest = try makeWallet(name: "Oldest")
+        let selected = SavedWallet(
+            name: "Selected",
+            address: try EVMAddress(
+                "0x0000000000000000000000000000000000000002"
+            ),
+            cardColor: .amber
+        )
+        let store = ScriptedSavedWalletStore(
+            snapshot: .init(
+                wallets: [oldest, selected],
+                selectedWalletID: selected.id
+            )
+        )
+        let vault = InMemoryWalletCredentialVault()
+        await vault.setError(
+            WalletCredentialError.authenticationCancelled,
+            for: WalletCredentialVaultOperation.store
+        )
+        let session = WalletSession(
+            store: store,
+            cachePurger: RecordingAddressCachePurger(),
+            credentialVault: vault
+        )
+        await session.load()
+
+        await #expect(throws: WalletCredentialError.authenticationCancelled) {
+            try await session.importCredential(
+                name: "Imported",
+                prepared: try makePreparedCredential(),
+                cardColor: .blue
+            )
+        }
+
+        #expect(try await store.loadSnapshot().selectedWalletID == selected.id)
+    }
+
+    @Test func upgradeSucceedsWhenOnlySelectionFails() async throws {
+        let watchOnly = try makeWallet(name: "Existing")
+        let store = ScriptedSavedWalletStore(
+            snapshot: .init(
+                wallets: [watchOnly],
+                selectedWalletID: watchOnly.id
+            )
+        )
+        let vault = InMemoryWalletCredentialVault()
+        let session = WalletSession(
+            store: store,
+            cachePurger: RecordingAddressCachePurger(),
+            credentialVault: vault
+        )
+        await session.load()
+        await store.setError(
+            RepositoryTestError.storageWriteFailure,
+            for: .select
+        )
+
+        try await session.importCredential(
+            name: "Ignored",
+            prepared: try makePreparedCredential(address: watchOnly.address),
+            cardColor: .pink,
+            confirmedUpgradeWalletID: watchOnly.id
+        )
+
+        #expect(session.wallets.first?.credentialReference != nil)
+        #expect(session.selectionErrorMessage == "Unable to switch wallet.")
+        #expect(
+            session.credentialImportTarget(for: watchOnly.address)
+                == .importedDuplicate(try #require(session.wallets.first))
+        )
     }
 
     @Test func rollbackFailureLeavesUnpublishedReferenceForLoadRepair() async throws {
@@ -1081,6 +1203,7 @@ struct WalletSessionTests {
         )
         #expect(await store.operations == [.detachCredentialReference])
         #expect(!(await controller.isSuspended(address: wallet.address)))
+        #expect(session.credentialRecoveryNotice?.walletID == wallet.id)
     }
 
     @Test func metadataFailureAfterSecretDeletionLeavesWalletWatchOnly() async throws {
@@ -1120,6 +1243,7 @@ struct WalletSessionTests {
             .detachCredentialReference,
             .delete
         ])
+        #expect(session.credentialRecoveryNotice?.walletID == wallet.id)
     }
 
     @Test func watchOnlyDeletionDoesNotTouchCredentialVault() async throws {

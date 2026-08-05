@@ -49,3 +49,16 @@
 - [x] 7.2 Update secret-input interaction tracking so a field becomes interacted only when its text changes, while invalid submission still reveals validation.
 - [x] 7.3 Add a general `WalletActionButtonStyle` and shared `WalletBackButton`, reuse the back button in Add Wallet and Wallet List, and reuse the general style for Wallet List's add action.
 - [x] 7.4 Run the focused UI regression, simulator tests and build, OpenSpec validation, and `git diff --check`.
+
+## 8. Review Remediation
+
+- [x] 8.1 Reject non-hex private-key input by validating UTF-8 bytes directly, closing both the `+`/`-` sign-prefix acceptance and the Character/UTF-8 index mismatch that trapped on multibyte input.
+- [x] 8.2 Compile the plaintext fixture credential vault and its selection branch out of release builds.
+- [x] 8.3 Publish credential downgrades already persisted when a later presence check fails, and report the specific credential error.
+- [x] 8.4 Raise the re-import alert when a credential-backed deletion fails after the secret was destroyed.
+- [x] 8.5 Report a derivation failure during credential submission instead of returning silently.
+- [x] 8.6 Restore the replaced wallet selection when a credential-backed add is rolled back.
+- [x] 8.7 Treat an upgrade's selection failure as a successful import with a selection error.
+- [x] 8.8 Give Keychain read and delete failures their own errors instead of reusing the storage-failure message.
+- [x] 8.9 Cover Keychain query construction and the vault store success path, asserting the encoded envelope, the account, and the access-control attributes.
+- [x] 8.10 Run the unit and UI suites, a release build, and OpenSpec validation.

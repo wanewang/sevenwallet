@@ -64,17 +64,28 @@ nonisolated struct TrustWalletCredentialDeriver: WalletCredentialDeriving {
     }
 
     private func strictHexadecimalData(_ value: String) -> Data? {
-        guard value.utf8.count == 64 else { return nil }
+        // Decodes UTF-8 bytes rather than Characters so that the length guard
+        // and the cursor agree, and rejects every non-hex byte itself: an
+        // `UInt8(_:radix:)` round trip would accept sign prefixes such as "+1".
+        let utf8 = Array(value.utf8)
+        guard utf8.count == 64 else { return nil }
         var bytes = Data(capacity: 32)
-        var index = value.startIndex
-        for _ in 0..<32 {
-            let next = value.index(index, offsetBy: 2)
-            guard let byte = UInt8(value[index..<next], radix: 16) else {
+        for pair in stride(from: 0, to: utf8.count, by: 2) {
+            guard let high = hexadecimalDigit(utf8[pair]),
+                  let low = hexadecimalDigit(utf8[pair + 1]) else {
                 return nil
             }
-            bytes.append(byte)
-            index = next
+            bytes.append(high << 4 | low)
         }
         return bytes
+    }
+
+    private func hexadecimalDigit(_ byte: UInt8) -> UInt8? {
+        switch byte {
+        case 48...57: byte - 48
+        case 97...102: byte - 97 + 10
+        case 65...70: byte - 65 + 10
+        default: nil
+        }
     }
 }

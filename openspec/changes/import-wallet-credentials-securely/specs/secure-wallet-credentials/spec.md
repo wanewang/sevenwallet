@@ -26,6 +26,10 @@ The system SHALL accept a private key only when trimming surrounding whitespace 
 - **WHEN** input has the wrong length, non-hexadecimal content, a zero scalar, or a scalar outside the secp256k1 range
 - **THEN** the system rejects it without authenticating or writing credential data
 
+#### Scenario: Input that only resembles hexadecimal
+- **WHEN** input is 64 bytes long but contains sign prefixes such as `+` or `-`, or characters outside the ASCII range
+- **THEN** the system rejects it rather than decoding it to unrelated key bytes or failing to parse it
+
 ### Requirement: Imported credentials derive a deterministic Ethereum address
 The system SHALL derive recovery-phrase imports at `m/44'/60'/0'/0/0` and SHALL derive private-key imports directly, using Ethereum secp256k1 and Keccak address rules.
 
@@ -65,7 +69,11 @@ The system MUST persist only public wallet metadata and an opaque credential ref
 
 #### Scenario: An operation fails
 - **WHEN** validation, authentication, Keychain, or SwiftData reports an error
-- **THEN** user-visible and diagnostic error text contains no submitted secret or derived private data
+- **THEN** user-visible and diagnostic error text contains no submitted secret or derived private data, and names the failed operation rather than reporting every Keychain failure as a storage failure
+
+#### Scenario: Release builds are assembled
+- **WHEN** the app is compiled for release
+- **THEN** test fixtures that hold credential payloads in plaintext memory are excluded from the binary and cannot be selected by a launch argument
 
 ### Requirement: Cross-store imports do not orphan credentials
 The system SHALL coordinate public wallet persistence and protected credential storage so a crash or failure converges to either a referenced credential-backed wallet or a watch-only wallet without an unreferenced Keychain secret.
@@ -76,7 +84,11 @@ The system SHALL coordinate public wallet persistence and protected credential s
 
 #### Scenario: Protected storage fails after public metadata
 - **WHEN** the public record is written but Keychain storage fails
-- **THEN** the system removes the new record or its credential reference, reports failure, and leaves no Keychain secret
+- **THEN** the system removes the new record or its credential reference, restores the wallet selection the failed import replaced, reports failure, and leaves no Keychain secret
+
+#### Scenario: Only wallet selection fails after both writes succeed
+- **WHEN** credential storage and reference attachment both succeed but selecting the wallet fails
+- **THEN** the import is reported as successful, the wallet is published as credential-backed, and only the selection failure is surfaced
 
 #### Scenario: App stops between public and protected writes
 - **WHEN** the app stops after writing a credential reference but before writing its Keychain item
@@ -95,7 +107,7 @@ The system SHALL require device-owner authentication for credential-backed delet
 
 #### Scenario: Public deletion fails after credential removal
 - **WHEN** the Keychain item is removed but cache or wallet-record deletion later fails
-- **THEN** the wallet remains visible as watch-only, portfolio loading resumes as needed, and a recoverable error is shown
+- **THEN** the wallet remains visible as watch-only, portfolio loading resumes as needed, a recoverable error is shown, and a re-import alert names the wallet so the destroyed credential is not reported as an unchanged wallet
 
 #### Scenario: Watch-only deletion
 - **WHEN** the user confirms deletion of a watch-only wallet
@@ -115,6 +127,10 @@ The system SHALL check referenced credential presence without presenting authent
 #### Scenario: Credential status cannot be determined
 - **WHEN** Keychain inspection fails for a reason other than absence or required interaction
 - **THEN** wallet loading reports an error rather than silently changing ownership status
+
+#### Scenario: Inspection fails after earlier wallets were downgraded
+- **WHEN** inspection fails for one wallet after earlier wallets in the same load were already detached
+- **THEN** the published wallets and re-import alert reflect the detachments that were persisted, so published state never disagrees with the store
 
 ### Requirement: Transient secret lifetime is minimized
 The system MUST keep submitted secret text only in the active import form and MUST clear it when the user changes method, cancels, completes import, or the app leaves the foreground.

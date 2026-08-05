@@ -18,7 +18,13 @@ enum AppDependencies {
     ) -> WalletAppState {
         let schema = Schema(WalletCacheSchema.models)
         let container: ModelContainer
+        // Fixtures back wallet credentials with plaintext memory, so they are
+        // compiled out of release builds entirely.
+        #if DEBUG
         let usesFixture = arguments.contains("UI_TEST_FIXTURE")
+        #else
+        let usesFixture = false
+        #endif
         let persistsFixtureWallets = usesFixture &&
             arguments.contains("UI_TEST_PERSIST_SAVED_WALLETS")
 
@@ -45,6 +51,7 @@ enum AppDependencies {
 
         let cacheStore = WalletStore(modelContainer: container)
 
+        #if DEBUG
         if usesFixture {
             return fixtureState(
                 arguments: arguments,
@@ -52,6 +59,7 @@ enum AppDependencies {
                 cachePurger: cacheStore
             )
         }
+        #endif
 
         let savedWalletStore = SavedWalletStore(modelContainer: container)
         let repository: any TokenRepositoryProtocol
@@ -96,6 +104,7 @@ enum AppDependencies {
         )
     }
 
+    #if DEBUG
     private static func fixtureState(
         arguments: [String],
         container: ModelContainer?,
@@ -191,6 +200,7 @@ enum AppDependencies {
             tokenRepository: repository
         )
     }
+    #endif
 
     private static func preparePersistentFixtureStore(
         container: ModelContainer,
@@ -528,7 +538,8 @@ private actor FixtureSavedWalletStore: SavedWalletStoreProtocol {
     }
 
     func rollbackCredentialBackedAdd(
-        id: UUID
+        id: UUID,
+        restoringSelection selection: UUID?
     ) throws -> SavedWalletSnapshot {
         guard let wallet = snapshot.wallets.first(where: { $0.id == id }) else {
             throw SavedWalletStoreError.walletNotFound
@@ -560,6 +571,7 @@ private actor FixtureSavedWalletStore: SavedWalletStoreProtocol {
     }
 }
 
+#if DEBUG
 private actor FixtureWalletCredentialVault: WalletCredentialVault {
     private let protectionAvailable: Bool
     private let cancelsAuthentication: Bool
@@ -619,6 +631,7 @@ private actor FixtureWalletCredentialVault: WalletCredentialVault {
         }
     }
 }
+#endif
 
 private actor FailingSavedWalletStore: SavedWalletStoreProtocol {
     let error: AppDependencyFailure
@@ -644,7 +657,8 @@ private actor FailingSavedWalletStore: SavedWalletStoreProtocol {
         id: UUID
     ) throws -> SavedWalletSnapshot { throw error }
     func rollbackCredentialBackedAdd(
-        id: UUID
+        id: UUID,
+        restoringSelection selection: UUID?
     ) throws -> SavedWalletSnapshot { throw error }
 }
 
