@@ -11,7 +11,7 @@ The app can currently save only public Ethereum addresses, so it cannot recogniz
 - Upgrade a matching watch-only wallet only after confirmation, reject duplicate credential-backed imports, and compensate partial Keychain/SwiftData failures without orphaning secrets.
 - Preserve a wallet as watch-only and notify the user when its credential becomes unavailable.
 - Identify watch-only and imported status in wallet UI without exposing the credential source or adding reveal/export behavior.
-- Add a pinned Trust Wallet Core dependency for BIP-39/BIP-44/secp256k1/Ethereum operations.
+- Add Trust Wallet Core from its official remote Swift Package, with committed package resolution for reproducible BIP-39/BIP-44/secp256k1/Ethereum operations.
 
 ## Capabilities
 
@@ -30,5 +30,5 @@ The app can currently save only public Ethereum addresses, so it cannot recogniz
 - SwiftData saved-wallet records gain non-secret credential metadata while remaining compatible with existing address-only records.
 - Add/edit/list/home wallet UI gains import-method, secure-entry, authentication, alert, and ownership-status behavior.
 - Wallet deletion coordinates Keychain cleanup with the existing cache and saved-wallet deletion flow.
-- The Xcode project adds Security and LocalAuthentication usage plus a version-pinned Trust Wallet Core Swift Package.
+- The Xcode project adds Security and LocalAuthentication usage plus the official remote Trust Wallet Core Swift Package with committed package resolution.
 - Unit, persistence, view-model, and UI tests gain deterministic public test vectors and protocol-backed secure-storage/authentication doubles; real secrets must never appear in fixtures, logs, or failure text.

@@ -1,6 +1,6 @@
 ## 1. Dependency and Credential Domain
 
-- [x] 1.1 Add the official Trust Wallet Core 4.6.13 release manifest as a checksum-pinned Swift Package dependency and verify both binary products resolve and build for the app/test targets.
+- [x] 1.1 Add the official remote Trust Wallet Core Swift Package dependency, commit its 4.7.1 package resolution, and verify both binary products resolve and build for the app/test targets.
 - [x] 1.2 Add typed import-method, credential-reference, opaque credential-payload, preparation-result, and non-secret error domain values without Codable, printable, or logging exposure for secret bytes.
 - [x] 1.3 Write derivation-interface tests for normalization, valid/invalid 12/24-word BIP-39 input, strict private-key parsing, scalar rejection, and published Ethereum address vectors.
 - [x] 1.4 Implement the Trust Wallet Core derivation adapter for mnemonic entropy and `m/44'/60'/0'/0/0` or raw-key Ethereum address derivation until the vector tests pass.

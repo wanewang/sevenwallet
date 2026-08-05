@@ -31,7 +31,7 @@ Using an optional reference instead of a separate parallel wallet type keeps sel
 
 ### Cryptography sits behind one derivation seam
 
-`WalletCredentialDeriving` accepts a typed phrase/private-key input and returns a `PreparedWalletCredential` containing the normalized Ethereum address plus an opaque, non-Codable credential payload. The production adapter uses Trust Wallet Core 4.6.13, pinned exactly through Swift Package Manager:
+`WalletCredentialDeriving` accepts a typed phrase/private-key input and returns a `PreparedWalletCredential` containing the normalized Ethereum address plus an opaque, non-Codable credential payload. The production adapter uses Trust Wallet Core from its official remote Swift Package repository. The project accepts version 4.7.1 up to the next major release, while the committed package resolution locks the current checkout to 4.7.1:
 
 - Phrase input is Unicode-normalized, lowercased, split on whitespace, restricted to 12 or 24 English words, and validated by Wallet Core. `HDWallet.entropy` becomes the stored payload. The address comes from the private key at `m/44'/60'/0'/0/0` with an empty BIP-39 passphrase.
 - Private-key input trims surrounding whitespace and an optional `0x`, decodes exactly 32 bytes, validates the secp256k1 scalar through Wallet Core, and derives the Ethereum address.
@@ -82,7 +82,7 @@ The Add Wallet and Wallet List headers both use the shared back-button module in
 - **[Keychain and SwiftData are not transactional]** → Write public references before secrets, use compensating removal/detach operations, publish only completed snapshots, and reconcile missing references on load.
 - **[Passcode removal invalidates device-only items]** → Preserve and relabel the wallet as watch-only, alert once, and support the confirmed re-import upgrade path.
 - **[Authentication prompts complicate automated tests]** → Test application behavior through protocol adapters and keep a small simulator-only integration suite for Keychain status mapping; never weaken production access flags for tests.
-- **[Pinned binary dependency increases app size and supply-chain surface]** → Pin an exact signed Wallet Core release, commit package resolution, restrict its use to the derivation adapter, and verify known vectors.
+- **[Remote binary dependency increases app size and supply-chain surface]** → Commit the Wallet Core 4.7.1 package resolution, restrict its use to the derivation adapter, and verify known vectors.
 - **[Only account zero is imported]** → State the derivation path in supporting UI and specs; account discovery is a later change.
 
 ## Migration Plan
